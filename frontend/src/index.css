@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: 251 248 245;
+    --color-surface: 255 255 255;
+    --color-border: 226 232 240;
+    --color-text: 15 23 42;
+    --color-muted: 100 116 139;
+  }
+
+  .dark {
+    --color-bg: 15 17 23;
+    --color-surface: 24 27 36;
+    --color-border: 44 50 66;
+    --color-text: 248 250 252;
+    --color-muted: 143 155 179;
+  }
+
+  body {
+    @apply bg-[#0f1117] text-slate-100 font-sans antialiased;
+  }
+}
+
+/* Custom Sleek Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(143, 155, 179, 0.2);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.5);
+}
+
+/* Keyframe Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.18s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Print Stylesheet for 80mm Thermal Receipts */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-invoice-content, #printable-invoice-content * {
+    visibility: visible;
+  }
+  #printable-invoice-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

@@ -27,13 +27,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'CAFEFLOW API is running',
+    version: '1.0.0',
+    status: 'healthy',
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
+    success: true,
+    message: 'CAFEFLOW API is healthy',
     status: 'healthy',
-    app: 'CAFEFLOW Backend API',
-    time: new Date().toISOString(),
-    version: '1.0.0',
   });
 });
 

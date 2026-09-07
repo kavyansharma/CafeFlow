@@ -2,11 +2,15 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { RecipeItem } from '../database/seedData';
+import { RecipeItem, CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getRecipes = (req: Request, res: Response) => {
-  const recipesWithDetails = db.recipes.map(r => {
-    const product = db.products.find(p => p.id === r.product_id);
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+
+  const tenantRecipes = db.recipes.filter(r => r.cafe_id === cafeId);
+  const recipesWithDetails = tenantRecipes.map(r => {
+    const product = db.products.find(p => p.cafe_id === cafeId && p.id === r.product_id);
     const sellingPrice = product ? product.selling_price : 0;
     const cogs = r.calculated_cogs;
     const grossMargin = sellingPrice - cogs;
@@ -25,9 +29,11 @@ export const getRecipes = (req: Request, res: Response) => {
 };
 
 export const getRecipeByProductId = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { productId } = req.params;
-  const recipe = db.recipes.find(r => r.product_id === productId);
-  const product = db.products.find(p => p.id === productId);
+  const recipe = db.recipes.find(r => r.cafe_id === cafeId && r.product_id === productId);
+  const product = db.products.find(p => p.cafe_id === cafeId && p.id === productId);
 
   if (!recipe) {
     return res.json({
@@ -56,21 +62,22 @@ export const getRecipeByProductId = (req: Request, res: Response) => {
 };
 
 export const saveRecipe = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { product_id, instructions, prep_time_mins, items } = req.body;
 
   if (!product_id || !Array.isArray(items)) {
     return res.status(400).json({ success: false, message: 'Product ID and recipe items array are required' });
   }
 
-  const product = db.products.find(p => p.id === product_id);
+  const product = db.products.find(p => p.cafe_id === cafeId && p.id === product_id);
   if (!product) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
+    return res.status(404).json({ success: false, message: 'Product not found in this cafe' });
   }
 
   // Calculate COGS from recipe items
   let totalCogs = 0;
   const processedItems: RecipeItem[] = items.map((item: any) => {
-    const inv = db.inventory.find(i => i.id === item.inventory_id);
+    const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === item.inventory_id);
     const unitCost = inv ? inv.cost_per_unit : 0;
     const costContrib = Number((unitCost * Number(item.quantity_required)).toFixed(2));
     totalCogs += costContrib;
@@ -84,13 +91,14 @@ export const saveRecipe = (req: AuthRequest, res: Response) => {
     };
   });
 
-  const existingIndex = db.recipes.findIndex(r => r.product_id === product_id);
+  const existingIndex = db.recipes.findIndex(r => r.cafe_id === cafeId && r.product_id === product_id);
   const roundedCogs = Number(totalCogs.toFixed(2));
 
   let savedRecipe;
   if (existingIndex >= 0) {
     savedRecipe = {
       ...db.recipes[existingIndex],
+      cafe_id: cafeId,
       instructions: instructions || '',
       prep_time_mins: Number(prep_time_mins || 5),
       calculated_cogs: roundedCogs,
@@ -100,6 +108,7 @@ export const saveRecipe = (req: AuthRequest, res: Response) => {
   } else {
     savedRecipe = {
       id: `rec-${uuidv4().substring(0, 8)}`,
+      cafe_id: cafeId,
       product_id,
       product_name: product.name,
       instructions: instructions || '',
@@ -115,21 +124,22 @@ export const saveRecipe = (req: AuthRequest, res: Response) => {
   product.cost_price = roundedCogs;
   product.updated_at = new Date().toISOString();
 
-  db.logAudit(req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Save Recipe BOM', `Configured recipe for ${product.name} (COGS: ₹${roundedCogs})`);
+  db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Save Recipe BOM', `Configured recipe for ${product.name} (COGS: ₹${roundedCogs})`);
 
   return res.json({ success: true, message: 'Recipe saved successfully', data: savedRecipe });
 };
 
 export const deleteRecipe = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { productId } = req.params;
-  const index = db.recipes.findIndex(r => r.product_id === productId);
+  const index = db.recipes.findIndex(r => r.cafe_id === cafeId && r.product_id === productId);
 
   if (index === -1) {
-    return res.status(404).json({ success: false, message: 'Recipe not found' });
+    return res.status(404).json({ success: false, message: 'Recipe not found in this cafe' });
   }
 
   const removed = db.recipes.splice(index, 1)[0];
-  const product = db.products.find(p => p.id === productId);
+  const product = db.products.find(p => p.cafe_id === cafeId && p.id === productId);
   if (product) {
     product.has_recipe = false;
   }

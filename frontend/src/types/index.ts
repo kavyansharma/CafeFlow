@@ -1,17 +1,42 @@
 export type Role = 'OWNER' | 'MANAGER' | 'CASHIER';
 
+export interface Cafe {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  address: string;
+  phone: string;
+  email: string;
+  gstin: string;
+  currency: string;
+  timezone: string;
+  invoice_prefix: string;
+  default_gst_rate: number;
+  loyalty_spend_per_point: number;
+  loyalty_point_value: number;
+  max_discount_percent: number;
+  enable_ai_insights: boolean;
+  status: 'ACTIVE' | 'SUSPENDED' | 'ONBOARDING';
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface User {
   id: string;
+  cafe_id: string;
   name: string;
   email: string;
   phone?: string;
   role: Role;
   is_active?: boolean;
+  cafe?: Cafe;
   created_at?: string;
 }
 
 export interface Category {
   id: string;
+  cafe_id?: string;
   name: string;
   slug: string;
   description: string;
@@ -23,6 +48,7 @@ export interface Category {
 
 export interface Product {
   id: string;
+  cafe_id?: string;
   category_id: string;
   category_name?: string;
   name: string;

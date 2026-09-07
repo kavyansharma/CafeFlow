@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Sparkles,
   Check,
+  Building2,
   ChevronDown,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
@@ -23,16 +24,21 @@ export const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const { currentShift, hasActiveShift } = useShift();
-  const { user } = useAuth();
+  const { user, currentCafe, switchDemoRole } = useAuth();
   const navigate = useNavigate();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isCafeDropdownOpen, setIsCafeDropdownOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const cafeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setIsNotifOpen(false);
+      }
+      if (cafeRef.current && !cafeRef.current.contains(e.target as Node)) {
+        setIsCafeDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -41,14 +47,91 @@ export const Header: React.FC = () => {
 
   return (
     <header className="h-16 px-6 bg-white dark:bg-[#181b24] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between z-30 transition-colors">
-      {/* Search Input */}
-      <div className="relative max-w-md w-full hidden md:block">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          placeholder="Search products, orders, customers (Press '/' to focus)..."
-          className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
-        />
+      {/* Active Cafe Tenant Indicator & Dropdown */}
+      <div className="relative flex items-center gap-3" ref={cafeRef}>
+        <button
+          onClick={() => setIsCafeDropdownOpen(prev => !prev)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all shadow-sm"
+        >
+          <Building2 className="w-4 h-4 text-amber-500 shrink-0" />
+          <span className="font-extrabold tracking-wide max-w-[200px] truncate">
+            {currentCafe?.name || 'Sunrise Cafe & Roastery'}
+          </span>
+          <ChevronDown className={clsx("w-3.5 h-3.5 text-amber-500/70 transition-transform", isCafeDropdownOpen && "rotate-180")} />
+        </button>
+
+        {isCafeDropdownOpen && (
+          <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-[#181b24] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-2 z-50 animate-scale-up">
+            <div className="px-3 py-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Switch Tenant Environment
+            </div>
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  switchDemoRole('OWNER', 'sunrise-cafe');
+                  setIsCafeDropdownOpen(false);
+                }}
+                className={clsx(
+                  "w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors",
+                  currentCafe?.slug === 'sunrise-cafe'
+                    ? "bg-amber-500 text-slate-950 font-bold"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                )}
+              >
+                <div>
+                  <p className="font-bold">☕ Sunrise Cafe & Roastery</p>
+                  <p className={clsx("text-[10px]", currentCafe?.slug === 'sunrise-cafe' ? "text-slate-900" : "text-slate-400")}>
+                    Bengaluru • Specialty Coffee & Bakes
+                  </p>
+                </div>
+                {currentCafe?.slug === 'sunrise-cafe' && <Check className="w-4 h-4" />}
+              </button>
+
+              <button
+                onClick={() => {
+                  switchDemoRole('OWNER', 'bean-theory');
+                  setIsCafeDropdownOpen(false);
+                }}
+                className={clsx(
+                  "w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors",
+                  currentCafe?.slug === 'bean-theory'
+                    ? "bg-amber-500 text-slate-950 font-bold"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                )}
+              >
+                <div>
+                  <p className="font-bold">🌿 Bean Theory Specialty Coffee</p>
+                  <p className={clsx("text-[10px]", currentCafe?.slug === 'bean-theory' ? "text-slate-900" : "text-slate-400")}>
+                    Mumbai • Pour Overs & Viennoiserie
+                  </p>
+                </div>
+                {currentCafe?.slug === 'bean-theory' && <Check className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-800 my-1 pt-1">
+              <button
+                onClick={() => {
+                  setIsCafeDropdownOpen(false);
+                  navigate('/register-cafe');
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-500 hover:bg-amber-500/10 transition-colors flex items-center gap-2"
+              >
+                <span>+ Onboard New Cafe</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Search Input */}
+        <div className="relative max-w-xs w-full hidden lg:block ml-2">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search in this cafe..."
+            className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+          />
+        </div>
       </div>
 
       {/* Right Controls */}

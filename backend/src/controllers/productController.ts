@@ -2,17 +2,22 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getProducts = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { category_id, search, available_only } = req.query;
   
-  let products = db.products.map(p => {
-    const category = db.categories.find(c => c.id === p.category_id);
-    return {
-      ...p,
-      category_name: category ? category.name : 'Unknown',
-    };
-  });
+  let products = db.products
+    .filter(p => p.cafe_id === cafeId)
+    .map(p => {
+      const category = db.categories.find(c => c.cafe_id === cafeId && c.id === p.category_id);
+      return {
+        ...p,
+        category_name: category ? category.name : 'Unknown',
+      };
+    });
 
   if (category_id && category_id !== 'all') {
     products = products.filter(p => p.category_id === category_id);
@@ -33,13 +38,15 @@ export const getProducts = (req: Request, res: Response) => {
 };
 
 export const getProductById = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const product = db.products.find(p => p.id === id);
+  const product = db.products.find(p => p.cafe_id === cafeId && p.id === id);
   if (!product) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
+    return res.status(404).json({ success: false, message: 'Product not found in this cafe' });
   }
-  const category = db.categories.find(c => c.id === product.category_id);
-  const recipe = db.recipes.find(r => r.product_id === product.id);
+  const category = db.categories.find(c => c.cafe_id === cafeId && c.id === product.category_id);
+  const recipe = db.recipes.find(r => r.cafe_id === cafeId && r.product_id === product.id);
 
   return res.json({
     success: true,
@@ -52,6 +59,7 @@ export const getProductById = (req: Request, res: Response) => {
 };
 
 export const createProduct = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const {
     name,
     category_id,
@@ -76,6 +84,7 @@ export const createProduct = (req: AuthRequest, res: Response) => {
 
   const newProduct = {
     id: `prod-${uuidv4().substring(0, 8)}`,
+    cafe_id: cafeId,
     name,
     category_id,
     sku: generatedSku,
@@ -94,23 +103,25 @@ export const createProduct = (req: AuthRequest, res: Response) => {
   };
 
   db.products.unshift(newProduct);
-  db.logAudit(req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Create Product', `Added ${newProduct.name} (${newProduct.sku})`);
+  db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Create Product', `Added ${newProduct.name} (${newProduct.sku})`);
 
   return res.status(201).json({ success: true, message: 'Product created successfully', data: newProduct });
 };
 
 export const updateProduct = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const productIndex = db.products.findIndex(p => p.id === id);
+  const productIndex = db.products.findIndex(p => p.cafe_id === cafeId && p.id === id);
 
   if (productIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
+    return res.status(404).json({ success: false, message: 'Product not found in this cafe' });
   }
 
   const existing = db.products[productIndex];
   const updated = {
     ...existing,
     ...req.body,
+    cafe_id: cafeId, // Ensure cafe_id cannot be overwritten
     selling_price: req.body.selling_price !== undefined ? Number(req.body.selling_price) : existing.selling_price,
     cost_price: req.body.cost_price !== undefined ? Number(req.body.cost_price) : existing.cost_price,
     gst_rate: req.body.gst_rate !== undefined ? Number(req.body.gst_rate) : existing.gst_rate,
@@ -120,28 +131,33 @@ export const updateProduct = (req: AuthRequest, res: Response) => {
   };
 
   db.products[productIndex] = updated;
-  db.logAudit(req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Update Product', `Updated ${updated.name}`);
+  db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Update Product', `Updated ${updated.name}`);
 
   return res.json({ success: true, message: 'Product updated successfully', data: updated });
 };
 
 export const deleteProduct = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const productIndex = db.products.findIndex(p => p.id === id);
+  const productIndex = db.products.findIndex(p => p.cafe_id === cafeId && p.id === id);
 
   if (productIndex === -1) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
+    return res.status(404).json({ success: false, message: 'Product not found in this cafe' });
   }
 
   const removed = db.products.splice(productIndex, 1)[0];
-  db.logAudit(req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Delete Product', `Deleted ${removed.name}`);
+  db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Delete Product', `Deleted ${removed.name}`);
 
   return res.json({ success: true, message: 'Product deleted successfully', data: removed });
 };
 
 export const getCategories = (req: Request, res: Response) => {
-  const categoriesWithCounts = db.categories.map(c => {
-    const count = db.products.filter(p => p.category_id === c.id).length;
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const tenantCategories = db.categories.filter(c => c.cafe_id === cafeId);
+  
+  const categoriesWithCounts = tenantCategories.map(c => {
+    const count = db.products.filter(p => p.cafe_id === cafeId && p.category_id === c.id).length;
     return {
       ...c,
       product_count: count,
@@ -152,6 +168,7 @@ export const getCategories = (req: Request, res: Response) => {
 };
 
 export const createCategory = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { name, description, icon } = req.body;
   if (!name) {
     return res.status(400).json({ success: false, message: 'Category name is required' });
@@ -160,14 +177,16 @@ export const createCategory = (req: AuthRequest, res: Response) => {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const newCat = {
     id: `cat-${uuidv4().substring(0, 6)}`,
+    cafe_id: cafeId,
     name,
     slug,
     description: description || '',
     icon: icon || 'Coffee',
-    sort_order: db.categories.length + 1,
+    sort_order: db.categories.filter(c => c.cafe_id === cafeId).length + 1,
     is_active: true,
   };
 
   db.categories.push(newCat);
+  db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Create Category', `Created category ${newCat.name}`);
   return res.status(201).json({ success: true, message: 'Category created', data: newCat });
 };

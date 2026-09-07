@@ -4,12 +4,11 @@ import { OrderItem } from '../database/seedData';
 
 export class InventoryService {
   /**
-   * Process stock deduction for all items in an order.
-   * Checks both product direct stock tracking and recipe ingredient BOM.
+   * Process stock deduction for all items in an order scoped to a specific cafe.
    */
-  public static processOrderStockDeduction(orderItems: OrderItem[], orderId: string, cashierName: string) {
+  public static processOrderStockDeduction(cafeId: string, orderItems: OrderItem[], orderId: string, cashierName: string) {
     for (const item of orderItems) {
-      const product = db.products.find(p => p.id === item.product_id);
+      const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id);
       if (!product) continue;
 
       // 1. If product tracks direct stock quantity
@@ -19,6 +18,7 @@ export class InventoryService {
 
         if (product.stock_quantity <= product.min_stock_level) {
           db.addNotification(
+            cafeId,
             'LOW_STOCK',
             `Low Stock Alert: ${product.name}`,
             `${product.name} is down to ${product.stock_quantity} units (Threshold: ${product.min_stock_level}).`,
@@ -28,20 +28,20 @@ export class InventoryService {
         }
       }
 
-      // 2. If product has a recipe, deduct individual ingredients
-      const recipe = db.recipes.find(r => r.product_id === product.id);
+      // 2. If product has a recipe, deduct individual ingredients within the same cafe
+      const recipe = db.recipes.find(r => r.cafe_id === cafeId && r.product_id === product.id);
       if (recipe && recipe.items && recipe.items.length > 0) {
         for (const recipeItem of recipe.items) {
-          const inv = db.inventory.find(i => i.id === recipeItem.inventory_id);
+          const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === recipeItem.inventory_id);
           if (inv) {
             const totalRequired = recipeItem.quantity_required * item.quantity;
-            const previousQty = inv.current_quantity;
             inv.current_quantity = Math.max(0, Number((inv.current_quantity - totalRequired).toFixed(3)));
             inv.last_updated = new Date().toISOString();
 
             // Log movement
             db.inventoryMovements.unshift({
               id: uuidv4(),
+              cafe_id: cafeId,
               inventory_id: inv.id,
               inventory_name: inv.name,
               movement_type: 'SALE',
@@ -58,6 +58,7 @@ export class InventoryService {
             if (inv.current_quantity <= inv.min_quantity) {
               const severity = inv.current_quantity <= inv.min_quantity * 0.5 ? 'CRITICAL' : 'WARNING';
               db.addNotification(
+                cafeId,
                 'LOW_STOCK',
                 `Raw Material Alert: ${inv.name}`,
                 `${inv.name} is at ${inv.current_quantity} ${inv.unit} (Min requirement: ${inv.min_quantity} ${inv.unit}). Replenish immediately.`,
@@ -72,17 +73,18 @@ export class InventoryService {
   }
 
   /**
-   * Adjust raw material stock manually, with reasons (Purchase, Adjustment, Wastage)
+   * Adjust raw material stock manually, scoped strictly to the authenticated cafe.
    */
   public static adjustStock(
+    cafeId: string,
     inventoryId: string,
     quantityChange: number,
     movementType: 'PURCHASE' | 'ADJUSTMENT' | 'WASTAGE',
     reason: string,
     userName: string
   ) {
-    const inv = db.inventory.find(i => i.id === inventoryId);
-    if (!inv) throw new Error('Inventory item not found');
+    const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === inventoryId);
+    if (!inv) throw new Error('Inventory item not found in this cafe');
 
     const newQty = Math.max(0, Number((inv.current_quantity + quantityChange).toFixed(3)));
     inv.current_quantity = newQty;
@@ -90,6 +92,7 @@ export class InventoryService {
 
     const movement = {
       id: uuidv4(),
+      cafe_id: cafeId,
       inventory_id: inv.id,
       inventory_name: inv.name,
       movement_type: movementType,

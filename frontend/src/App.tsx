@@ -8,6 +8,7 @@ import { CartProvider } from './context/CartContext';
 
 import { AppLayout } from './components/layout/AppLayout';
 import { Login } from './pages/Login';
+import { RegisterCafe } from './pages/RegisterCafe';
 import { Dashboard } from './pages/Dashboard';
 import { POS } from './pages/POS';
 import { Products } from './pages/Products';
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
                 <Routes>
                   {/* Public Authentication */}
                   <Route path="/login" element={<Login />} />
+                  <Route path="/register-cafe" element={<RegisterCafe />} />
 
                   {/* Main POS Shell Layout */}
                   <Route

@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
+import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getSalesSummary = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { range = '7d', date_from, date_to } = req.query;
 
   const now = new Date();
@@ -20,7 +24,7 @@ export const getSalesSummary = (req: Request, res: Response) => {
     startDate = new Date(String(date_from));
   }
 
-  let filteredOrders = db.orders.filter(o => o.status === 'COMPLETED' && new Date(o.created_at) >= startDate);
+  let filteredOrders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED' && new Date(o.created_at) >= startDate);
 
   if (range === 'yesterday') {
     const endYesterday = new Date(startDate);
@@ -101,7 +105,9 @@ export const getSalesSummary = (req: Request, res: Response) => {
 };
 
 export const exportSalesCSV = (req: Request, res: Response) => {
-  const orders = db.orders.filter(o => o.status === 'COMPLETED');
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const orders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
   
   const headers = ['Invoice Number', 'Date', 'Customer Name', 'Phone', 'Cashier', 'Subtotal', 'Tax', 'Discount', 'Total Amount', 'Payment Method'];
   const rows = orders.map(o => [

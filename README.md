@@ -49,10 +49,38 @@
 - **Inventory Depletion Risk**: Predicts exact days remaining before raw materials hit critical safety levels.
 - **Business Recommendations**: Actionable suggestions with impact tiers (Pricing, Inventory, Staffing, Promotions).
 
-### 8. 🛡️ Role-Based Access Control (RBAC)
-- `OWNER`: Full unrestricted access to all modules, staff accounts, settings, and AI forecasting.
-- `MANAGER`: POS billing, products, inventory, recipes, customers, sales reports, and analytics.
-- `CASHIER`: Fast POS billing, customer attachment, shift management, and invoice history.
+### 8. 🏢 Multi-Tenant SaaS Architecture
+- **Tenant Isolation**: Every cafe operates in a completely isolated tenant partition. Products, inventory, recipes, customers, shifts, orders, and invoices never bleed across cafes.
+- **Pre-Configured Demo Cafes**:
+  - **Sunrise Cafe & Roastery** (`cafe-sunrise-001`, Bengaluru): Traditional artisanal cafe & bakery.
+  - **Bean Theory Specialty Coffee** (`cafe-bean-002`, Mumbai): Specialty pour-over bar & French viennoiserie.
+- **5-Step Cafe Self-Registration**: Self-service onboarding wizard at `/register-cafe` with starter menu packs, custom invoice prefixes, tax setup, and instant tenant provisioning.
+- **Context-Aware JWTs**: Every API request extracts tenant context from verified JWT claims (`req.user.cafe_id`) preventing tenant spoofing.
+
+### 9. 🛡️ Role-Based Access Control (RBAC)
+- `OWNER`: Full unrestricted access to cafe settings, staff management, financial telemetry, and AI forecasting.
+- `MANAGER`: POS billing, menu catalog, inventory BOM, customer CRM, sales reporting, and analytics.
+- `CASHIER`: High-speed POS billing, bill parking, customer lookups, shift opening/closing, and invoice reprints.
+
+---
+
+## 🔑 Demo Access Credentials
+
+All demo accounts use password: `demo123`
+
+### ☕ Sunrise Cafe & Roastery (Bengaluru)
+| Role | Email | Password | Scope |
+| :--- | :--- | :--- | :--- |
+| **Owner** | `owner@sunrise.demo` | `demo123` | Full Admin & Settings |
+| **Manager** | `manager@sunrise.demo` | `demo123` | Operations & Sales |
+| **Cashier** | `cashier@sunrise.demo` | `demo123` | POS Billing & Shifts |
+
+### 🌿 Bean Theory Specialty Coffee (Mumbai)
+| Role | Email | Password | Scope |
+| :--- | :--- | :--- | :--- |
+| **Owner** | `owner@bean.demo` | `demo123` | Full Admin & Settings |
+| **Manager** | `manager@bean.demo` | `demo123` | Operations & Sales |
+| **Cashier** | `cashier@bean.demo` | `demo123` | POS Billing & Shifts |
 
 ---
 
@@ -60,37 +88,43 @@
 
 ### Prerequisites
 - Node.js (v18+)
-- npm
+- npm (v9+)
 
-### 1. Start the Backend API Server
-```bash
-cd backend
-npm install
-npm run dev
-```
-*Backend runs on `http://localhost:5000` with REST API mounted at `/api`.*
+### Installation & Running Locally
 
-### 2. Start the Frontend Application
-```bash
-cd frontend
-npm install
-npm run dev
-```
-*Frontend runs on `http://localhost:5173`.*
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/kavyansharma/CafeFlow.git
+   cd CafeFlow
+   ```
+
+2. **Backend Setup**:
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+   *Backend runs on `http://localhost:5000`*
+
+3. **Frontend Setup**:
+   ```bash
+   cd ../frontend
+   npm install
+   npm run dev
+   ```
+   *Frontend runs on `http://localhost:5173`*
+
+4. **Run Automated Multi-Tenant Tests**:
+   ```bash
+   cd backend
+   npm run build
+   node dist/tests/tenant_isolation_test.js
+   ```
 
 ---
 
-## 🔑 Demo Login Credentials
-
-| Role | Email | Password | Access Scope |
-| :--- | :--- | :--- | :--- |
-| **Owner** | `owner@cafeflow.com` | `owner123` | Full Access (All modules & settings) |
-| **Manager** | `manager@cafeflow.com` | `manager123` | POS, Inventory, Recipes, Reports |
-| **Cashier** | `cashier@cafeflow.com` | `cashier123` | POS Billing, Shifts, Invoices |
-
-*(You can also use the 1-click Quick Demo Role Switcher on the login screen or sidebar)*
-
----
+## 📄 License
+Commercial SaaS Edition — Designed & Developed for Modern Cafes.
 
 ## 🗄️ Database Architecture
 The database schema is fully defined in `backend/src/database/schema.sql` for PostgreSQL with normalized relationships, UUID primary keys, and foreign key constraints across `users`, `categories`, `products`, `inventory`, `inventory_movements`, `recipes`, `recipe_items`, `customers`, `orders`, `order_items`, `invoices`, `shifts`, `notifications`, `settings`, and `audit_logs`.

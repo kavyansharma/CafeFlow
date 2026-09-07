@@ -4,8 +4,31 @@ import bcrypt from 'bcryptjs';
 const salt = bcrypt.genSaltSync(10);
 export const hashPassword = (password: string) => bcrypt.hashSync(password, salt);
 
+export interface Cafe {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  address: string;
+  phone: string;
+  email: string;
+  gstin: string;
+  currency: string;
+  timezone: string;
+  invoice_prefix: string;
+  default_gst_rate: number;
+  loyalty_spend_per_point: number;
+  loyalty_point_value: number;
+  max_discount_percent: number;
+  enable_ai_insights: boolean;
+  status: 'ACTIVE' | 'SUSPENDED' | 'ONBOARDING';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface User {
   id: string;
+  cafe_id: string;
   name: string;
   email: string;
   phone: string;
@@ -17,6 +40,7 @@ export interface User {
 
 export interface Category {
   id: string;
+  cafe_id: string;
   name: string;
   slug: string;
   description: string;
@@ -27,6 +51,7 @@ export interface Category {
 
 export interface Product {
   id: string;
+  cafe_id: string;
   category_id: string;
   category_name?: string;
   name: string;
@@ -47,11 +72,12 @@ export interface Product {
 
 export interface InventoryItem {
   id: string;
+  cafe_id: string;
   name: string;
   sku: string;
   category: string;
   current_quantity: number;
-  unit: string; // 'kg', 'g', 'L', 'ml', 'pcs', 'pack'
+  unit: string;
   min_quantity: number;
   cost_per_unit: number;
   supplier: string;
@@ -60,6 +86,7 @@ export interface InventoryItem {
 
 export interface InventoryMovement {
   id: string;
+  cafe_id: string;
   inventory_id: string;
   inventory_name: string;
   movement_type: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'WASTAGE';
@@ -82,6 +109,7 @@ export interface RecipeItem {
 
 export interface Recipe {
   id: string;
+  cafe_id: string;
   product_id: string;
   product_name: string;
   instructions: string;
@@ -92,6 +120,7 @@ export interface Recipe {
 
 export interface Customer {
   id: string;
+  cafe_id: string;
   name: string;
   phone: string;
   email?: string;
@@ -118,6 +147,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  cafe_id: string;
   invoice_number: string;
   shift_id?: string;
   customer_id?: string;
@@ -145,6 +175,7 @@ export interface Order {
 
 export interface Invoice {
   id: string;
+  cafe_id: string;
   order_id: string;
   invoice_number: string;
   invoice_date: string;
@@ -166,6 +197,7 @@ export interface Invoice {
 
 export interface Shift {
   id: string;
+  cafe_id: string;
   user_id: string;
   user_name: string;
   start_time: string;
@@ -185,6 +217,7 @@ export interface Shift {
 
 export interface Notification {
   id: string;
+  cafe_id: string;
   type: 'LOW_STOCK' | 'PAYMENT' | 'SHIFT' | 'CUSTOMER' | 'SYSTEM' | 'AI_INSIGHT';
   title: string;
   message: string;
@@ -194,24 +227,9 @@ export interface Notification {
   created_at: string;
 }
 
-export interface CafeSettings {
-  cafe_name: string;
-  tagline: string;
-  address: string;
-  phone: string;
-  email: string;
-  gstin: string;
-  currency: string;
-  invoice_prefix: string;
-  default_gst_rate: number;
-  loyalty_spend_per_point: number; // e.g. ₹100
-  loyalty_point_value: number; // e.g. ₹1.00
-  max_discount_percent: number;
-  enable_ai_insights: boolean;
-}
-
 export interface AuditLog {
   id: string;
+  cafe_id: string;
   user_name: string;
   role: string;
   action: string;
@@ -219,10 +237,100 @@ export interface AuditLog {
   created_at: string;
 }
 
-// Initial Data Seed Generation
+// ==========================================================
+// SEED CAFES (TENANTS)
+// ==========================================================
+export const CAFE_SUNRISE_ID = 'cafe-sunrise-001';
+export const CAFE_BEAN_ID = 'cafe-bean-002';
+
+export const initialCafes: Cafe[] = [
+  {
+    id: CAFE_SUNRISE_ID,
+    name: 'Sunrise Cafe & Roastery',
+    slug: 'sunrise-cafe',
+    logo_url: '',
+    address: 'Shop 4-5, Ground Floor, Indiranagar 100ft Road, Bengaluru, Karnataka 560038',
+    phone: '+91 80 4123 9876',
+    email: 'hello@sunrisecafe.com',
+    gstin: '29ABCDE1234F1Z5',
+    currency: '₹',
+    timezone: 'Asia/Kolkata',
+    invoice_prefix: 'SC-2026-',
+    default_gst_rate: 5,
+    loyalty_spend_per_point: 100,
+    loyalty_point_value: 1.0,
+    max_discount_percent: 30,
+    enable_ai_insights: true,
+    status: 'ACTIVE',
+    created_at: '2026-01-01T08:00:00.000Z',
+    updated_at: '2026-01-01T08:00:00.000Z',
+  },
+  {
+    id: CAFE_BEAN_ID,
+    name: 'Bean Theory Specialty Coffee',
+    slug: 'bean-theory',
+    logo_url: '',
+    address: 'Plot 18, Pali Hill Road, Bandra West, Mumbai, Maharashtra 400050',
+    phone: '+91 22 6789 1234',
+    email: 'contact@beantheory.com',
+    gstin: '27AABCB9876E1Z2',
+    currency: '₹',
+    timezone: 'Asia/Kolkata',
+    invoice_prefix: 'BT-2026-',
+    default_gst_rate: 5,
+    loyalty_spend_per_point: 150,
+    loyalty_point_value: 2.0,
+    max_discount_percent: 25,
+    enable_ai_insights: true,
+    status: 'ACTIVE',
+    created_at: '2026-02-01T08:00:00.000Z',
+    updated_at: '2026-02-01T08:00:00.000Z',
+  },
+];
+
+// ==========================================================
+// SEED USERS (TENANT-SCOPED)
+// ==========================================================
 export const initialUsers: User[] = [
+  // --- Sunrise Cafe Users ---
+  {
+    id: 'usr-sunrise-owner',
+    cafe_id: CAFE_SUNRISE_ID,
+    name: 'Aarav Sharma',
+    email: 'owner@sunrise.demo',
+    phone: '+91 98765 43210',
+    password_hash: hashPassword('demo123'),
+    role: 'OWNER',
+    is_active: true,
+    created_at: '2026-01-01T08:00:00.000Z',
+  },
+  {
+    id: 'usr-sunrise-mgr',
+    cafe_id: CAFE_SUNRISE_ID,
+    name: 'Pooja Verma',
+    email: 'manager@sunrise.demo',
+    phone: '+91 98765 43211',
+    password_hash: hashPassword('demo123'),
+    role: 'MANAGER',
+    is_active: true,
+    created_at: '2026-01-15T09:00:00.000Z',
+  },
+  {
+    id: 'usr-sunrise-cashier',
+    cafe_id: CAFE_SUNRISE_ID,
+    name: 'Rahul Sen',
+    email: 'cashier@sunrise.demo',
+    phone: '+91 98765 43212',
+    password_hash: hashPassword('demo123'),
+    role: 'CASHIER',
+    is_active: true,
+    created_at: '2026-02-01T10:00:00.000Z',
+  },
+
+  // Legacy fallback logins mapped to Sunrise Cafe
   {
     id: 'usr-owner-001',
+    cafe_id: CAFE_SUNRISE_ID,
     name: 'Aarav Sharma',
     email: 'owner@cafeflow.com',
     phone: '+91 98765 43210',
@@ -233,6 +341,7 @@ export const initialUsers: User[] = [
   },
   {
     id: 'usr-mgr-002',
+    cafe_id: CAFE_SUNRISE_ID,
     name: 'Pooja Verma',
     email: 'manager@cafeflow.com',
     phone: '+91 98765 43211',
@@ -243,6 +352,7 @@ export const initialUsers: User[] = [
   },
   {
     id: 'usr-cashier-003',
+    cafe_id: CAFE_SUNRISE_ID,
     name: 'Rahul Sen',
     email: 'cashier@cafeflow.com',
     phone: '+91 98765 43212',
@@ -251,42 +361,98 @@ export const initialUsers: User[] = [
     is_active: true,
     created_at: '2026-02-01T10:00:00.000Z',
   },
-];
 
-export const initialCategories: Category[] = [
-  { id: 'cat-coffee', name: 'Coffee', slug: 'coffee', description: 'Artisan Espresso, Brews & Iced Coffees', icon: 'Coffee', sort_order: 1, is_active: true },
-  { id: 'cat-tea', name: 'Tea', slug: 'tea', description: 'Handcrafted Chais & Herbal Infusions', icon: 'CupSoda', sort_order: 2, is_active: true },
-  { id: 'cat-beverages', name: 'Beverages', slug: 'beverages', description: 'Smoothies, Coolers & Shakes', icon: 'GlassWater', sort_order: 3, is_active: true },
-  { id: 'cat-snacks', name: 'Snacks', slug: 'snacks', description: 'Crispy finger foods & Fries', icon: 'Utensils', sort_order: 4, is_active: true },
-  { id: 'cat-sandwiches', name: 'Sandwiches', slug: 'sandwiches', description: 'Grilled Gourmet Paninis & Sourdough', icon: 'Sandwich', sort_order: 5, is_active: true },
-  { id: 'cat-desserts', name: 'Desserts', slug: 'desserts', description: 'Fresh Bakes, Cheesecakes & Brownies', icon: 'Cake', sort_order: 6, is_active: true },
-  { id: 'cat-meals', name: 'Meals', slug: 'meals', description: 'Pastas, Bowls & Quick Bites', icon: 'Soup', sort_order: 7, is_active: true },
-  { id: 'cat-addons', name: 'Add-ons', slug: 'add-ons', description: 'Syrups, Extra Shots & Plant Milks', icon: 'PlusCircle', sort_order: 8, is_active: true },
-];
-
-export const initialInventory: InventoryItem[] = [
-  { id: 'inv-beans', name: 'Arabica Espresso Roast Beans', sku: 'RAW-BEAN-01', category: 'Coffee', current_quantity: 4.8, unit: 'kg', min_quantity: 2.0, cost_per_unit: 1200, supplier: 'Blue Mountain Estate Roasters', last_updated: '2026-09-07T10:00:00.000Z' },
-  { id: 'inv-milk', name: 'Whole Cream Dairy Milk', sku: 'RAW-MILK-01', category: 'Dairy', current_quantity: 8.5, unit: 'L', min_quantity: 12.0, cost_per_unit: 65, supplier: 'Amul Fresh Hub', last_updated: '2026-09-07T18:30:00.000Z' },
-  { id: 'inv-oatmilk', name: 'Oatly Barista Edition Oat Milk', sku: 'RAW-OAT-01', category: 'Dairy Alternatives', current_quantity: 6.0, unit: 'L', min_quantity: 3.0, cost_per_unit: 290, supplier: 'Green Planet Foods', last_updated: '2026-09-06T14:00:00.000Z' },
-  { id: 'inv-sugar', name: 'Organic Brown Sugar', sku: 'RAW-SUG-01', category: 'Dry Goods', current_quantity: 7.2, unit: 'kg', min_quantity: 3.0, cost_per_unit: 75, supplier: 'Nature Basket Organics', last_updated: '2026-09-05T09:00:00.000Z' },
-  { id: 'inv-caramel', name: 'Monin Salted Caramel Syrup', sku: 'RAW-SYR-01', category: 'Syrups', current_quantity: 1400, unit: 'ml', min_quantity: 500, cost_per_unit: 1.2, supplier: 'Monin India Direct', last_updated: '2026-09-06T11:00:00.000Z' },
-  { id: 'inv-vanilla', name: 'Monin Madagascar Vanilla Syrup', sku: 'RAW-SYR-02', category: 'Syrups', current_quantity: 1100, unit: 'ml', min_quantity: 500, cost_per_unit: 1.1, supplier: 'Monin India Direct', last_updated: '2026-09-06T11:00:00.000Z' },
-  { id: 'inv-tea-leaves', name: 'Assam Royal CTC Tea Leaves', sku: 'RAW-TEA-01', category: 'Tea', current_quantity: 3.5, unit: 'kg', min_quantity: 1.5, cost_per_unit: 450, supplier: 'Assam Tea Exporters', last_updated: '2026-09-05T12:00:00.000Z' },
-  { id: 'inv-chai-masala', name: 'Signature Secret Chai Masala', sku: 'RAW-SPICE-01', category: 'Spices', current_quantity: 850, unit: 'g', min_quantity: 300, cost_per_unit: 1.8, supplier: 'Heritage Spices', last_updated: '2026-09-04T15:00:00.000Z' },
-  { id: 'inv-bread', name: 'Artisan Sourdough Loaves', sku: 'RAW-BRD-01', category: 'Bakery', current_quantity: 14, unit: 'pcs', min_quantity: 6, cost_per_unit: 80, supplier: 'Craft Bakers Guild', last_updated: '2026-09-07T07:00:00.000Z' },
-  { id: 'inv-paneer', name: 'Fresh Malai Paneer', sku: 'RAW-PAN-01', category: 'Dairy', current_quantity: 3.2, unit: 'kg', min_quantity: 1.5, cost_per_unit: 380, supplier: 'Amul Fresh Hub', last_updated: '2026-09-07T08:00:00.000Z' },
-  { id: 'inv-cheese', name: 'Aged Cheddar & Mozzarella Blend', sku: 'RAW-CHS-01', category: 'Dairy', current_quantity: 1.8, unit: 'kg', min_quantity: 2.5, cost_per_unit: 620, supplier: 'Dlecta Fine Foods', last_updated: '2026-09-07T08:00:00.000Z' },
-  { id: 'inv-fries', name: 'McCain Premium Coated Fries', sku: 'RAW-SNK-01', category: 'Frozen', current_quantity: 6.5, unit: 'kg', min_quantity: 4.0, cost_per_unit: 190, supplier: 'McCain Commercial', last_updated: '2026-09-05T16:00:00.000Z' },
-  { id: 'inv-pasta', name: 'Barilla Penne Rigate', sku: 'RAW-PST-01', category: 'Dry Goods', current_quantity: 5.0, unit: 'kg', min_quantity: 2.0, cost_per_unit: 260, supplier: 'Universal Imports', last_updated: '2026-09-04T10:00:00.000Z' },
-  { id: 'inv-cups', name: 'Eco 80mm Takeaway Hot Cups', sku: 'PKG-CUP-01', category: 'Packaging', current_quantity: 350, unit: 'pcs', min_quantity: 100, cost_per_unit: 4.5, supplier: 'EcoPack India', last_updated: '2026-09-06T17:00:00.000Z' },
-];
-
-export const initialProducts: Product[] = [
+  // --- Bean Theory Users (Isolated Tenant) ---
   {
-    id: 'prod-cappuccino',
-    category_id: 'cat-coffee',
+    id: 'usr-bean-owner',
+    cafe_id: CAFE_BEAN_ID,
+    name: 'Devika Singhania',
+    email: 'owner@bean.demo',
+    phone: '+91 98201 11223',
+    password_hash: hashPassword('demo123'),
+    role: 'OWNER',
+    is_active: true,
+    created_at: '2026-02-01T08:00:00.000Z',
+  },
+  {
+    id: 'usr-bean-mgr',
+    cafe_id: CAFE_BEAN_ID,
+    name: 'Rhea Fernandes',
+    email: 'manager@bean.demo',
+    phone: '+91 98201 11224',
+    password_hash: hashPassword('demo123'),
+    role: 'MANAGER',
+    is_active: true,
+    created_at: '2026-02-05T09:00:00.000Z',
+  },
+  {
+    id: 'usr-bean-cashier',
+    cafe_id: CAFE_BEAN_ID,
+    name: 'Kabir Merchant',
+    email: 'cashier@bean.demo',
+    phone: '+91 98201 11225',
+    password_hash: hashPassword('demo123'),
+    role: 'CASHIER',
+    is_active: true,
+    created_at: '2026-02-10T10:00:00.000Z',
+  },
+];
+
+// ==========================================================
+// SEED CATEGORIES (TENANT-SCOPED)
+// ==========================================================
+export const initialCategories: Category[] = [
+  // Sunrise Cafe Categories
+  { id: 'cat-sc-coffee', cafe_id: CAFE_SUNRISE_ID, name: 'Coffee', slug: 'coffee', description: 'Artisan Espresso, Brews & Iced Coffees', icon: 'Coffee', sort_order: 1, is_active: true },
+  { id: 'cat-sc-tea', cafe_id: CAFE_SUNRISE_ID, name: 'Tea', slug: 'tea', description: 'Handcrafted Chais & Herbal Infusions', icon: 'CupSoda', sort_order: 2, is_active: true },
+  { id: 'cat-sc-beverages', cafe_id: CAFE_SUNRISE_ID, name: 'Beverages', slug: 'beverages', description: 'Smoothies, Coolers & Shakes', icon: 'GlassWater', sort_order: 3, is_active: true },
+  { id: 'cat-sc-snacks', cafe_id: CAFE_SUNRISE_ID, name: 'Snacks', slug: 'snacks', description: 'Crispy finger foods & Fries', icon: 'Utensils', sort_order: 4, is_active: true },
+  { id: 'cat-sc-sandwiches', cafe_id: CAFE_SUNRISE_ID, name: 'Sandwiches', slug: 'sandwiches', description: 'Grilled Gourmet Paninis & Sourdough', icon: 'Sandwich', sort_order: 5, is_active: true },
+  { id: 'cat-sc-desserts', cafe_id: CAFE_SUNRISE_ID, name: 'Desserts', slug: 'desserts', description: 'Fresh Bakes, Cheesecakes & Brownies', icon: 'Cake', sort_order: 6, is_active: true },
+  { id: 'cat-sc-meals', cafe_id: CAFE_SUNRISE_ID, name: 'Meals', slug: 'meals', description: 'Pastas, Bowls & Quick Bites', icon: 'Soup', sort_order: 7, is_active: true },
+  { id: 'cat-sc-addons', cafe_id: CAFE_SUNRISE_ID, name: 'Add-ons', slug: 'add-ons', description: 'Syrups, Extra Shots & Plant Milks', icon: 'PlusCircle', sort_order: 8, is_active: true },
+
+  // Bean Theory Categories (Distinct)
+  { id: 'cat-bt-pour-over', cafe_id: CAFE_BEAN_ID, name: 'Manual Brews', slug: 'manual-brews', description: 'Single-origin V60, Aeropress & Chemex', icon: 'Coffee', sort_order: 1, is_active: true },
+  { id: 'cat-bt-espresso', cafe_id: CAFE_BEAN_ID, name: 'Espresso Bar', slug: 'espresso-bar', description: 'Micro-lot espresso extractions & Flat Whites', icon: 'Coffee', sort_order: 2, is_active: true },
+  { id: 'cat-bt-cold-brew', cafe_id: CAFE_BEAN_ID, name: 'Cold Brews & Tonics', slug: 'cold-brews', description: '18-hour steep nitro & citrus infusions', icon: 'GlassWater', sort_order: 3, is_active: true },
+  { id: 'cat-bt-bakery', cafe_id: CAFE_BEAN_ID, name: 'French Viennoiserie', slug: 'viennoiserie', description: 'Butter croissants, cruffins & tarts', icon: 'Cake', sort_order: 4, is_active: true },
+  { id: 'cat-bt-brunch', cafe_id: CAFE_BEAN_ID, name: 'Artisan Brunch', slug: 'artisan-brunch', description: 'Avocado toasts, tartines & shakshuka', icon: 'Sandwich', sort_order: 5, is_active: true },
+];
+
+// ==========================================================
+// SEED INVENTORY (TENANT-SCOPED)
+// ==========================================================
+export const initialInventory: InventoryItem[] = [
+  // --- Sunrise Cafe Inventory ---
+  { id: 'inv-sc-beans', cafe_id: CAFE_SUNRISE_ID, name: 'Arabica Espresso Roast Beans', sku: 'SC-RAW-BEAN-01', category: 'Coffee', current_quantity: 4.8, unit: 'kg', min_quantity: 2.0, cost_per_unit: 1200, supplier: 'Blue Mountain Roasters', last_updated: '2026-09-07T10:00:00.000Z' },
+  { id: 'inv-sc-milk', cafe_id: CAFE_SUNRISE_ID, name: 'Whole Cream Dairy Milk', sku: 'SC-RAW-MILK-01', category: 'Dairy', current_quantity: 8.5, unit: 'L', min_quantity: 12.0, cost_per_unit: 65, supplier: 'Amul Fresh Hub', last_updated: '2026-09-07T18:30:00.000Z' },
+  { id: 'inv-sc-oatmilk', cafe_id: CAFE_SUNRISE_ID, name: 'Oatly Barista Edition Oat Milk', sku: 'SC-RAW-OAT-01', category: 'Dairy Alternatives', current_quantity: 6.0, unit: 'L', min_quantity: 3.0, cost_per_unit: 290, supplier: 'Green Planet Foods', last_updated: '2026-09-06T14:00:00.000Z' },
+  { id: 'inv-sc-sugar', cafe_id: CAFE_SUNRISE_ID, name: 'Organic Brown Sugar', sku: 'SC-RAW-SUG-01', category: 'Dry Goods', current_quantity: 7.2, unit: 'kg', min_quantity: 3.0, cost_per_unit: 75, supplier: 'Nature Basket Organics', last_updated: '2026-09-05T09:00:00.000Z' },
+  { id: 'inv-sc-paneer', cafe_id: CAFE_SUNRISE_ID, name: 'Fresh Malai Paneer', sku: 'SC-RAW-PAN-01', category: 'Dairy', current_quantity: 3.2, unit: 'kg', min_quantity: 1.5, cost_per_unit: 380, supplier: 'Amul Fresh Hub', last_updated: '2026-09-07T08:00:00.000Z' },
+  { id: 'inv-sc-bread', cafe_id: CAFE_SUNRISE_ID, name: 'Artisan Sourdough Loaves', sku: 'SC-RAW-BRD-01', category: 'Bakery', current_quantity: 14, unit: 'pcs', min_quantity: 6, cost_per_unit: 80, supplier: 'Craft Bakers Guild', last_updated: '2026-09-07T07:00:00.000Z' },
+  { id: 'inv-sc-cups', cafe_id: CAFE_SUNRISE_ID, name: 'Eco 80mm Takeaway Hot Cups', sku: 'SC-PKG-CUP-01', category: 'Packaging', current_quantity: 350, unit: 'pcs', min_quantity: 100, cost_per_unit: 4.5, supplier: 'EcoPack India', last_updated: '2026-09-06T17:00:00.000Z' },
+
+  // --- Bean Theory Inventory (Isolated) ---
+  { id: 'inv-bt-yirgacheffe', cafe_id: CAFE_BEAN_ID, name: 'Ethiopian Yirgacheffe Washed Beans', sku: 'BT-RAW-ETH-01', category: 'Specialty Coffee', current_quantity: 6.5, unit: 'kg', min_quantity: 2.5, cost_per_unit: 2400, supplier: 'Direct Origin Imports', last_updated: '2026-09-07T12:00:00.000Z' },
+  { id: 'inv-bt-almond-milk', cafe_id: CAFE_BEAN_ID, name: 'Califia Farms Almond Barista Milk', sku: 'BT-RAW-ALM-01', category: 'Dairy Alternatives', current_quantity: 12.0, unit: 'L', min_quantity: 5.0, cost_per_unit: 340, supplier: 'Gourmet World Foods', last_updated: '2026-09-07T14:00:00.000Z' },
+  { id: 'inv-bt-avocados', cafe_id: CAFE_BEAN_ID, name: 'Hass Avocados Grade A', sku: 'BT-RAW-AVO-01', category: 'Produce', current_quantity: 22, unit: 'pcs', min_quantity: 8, cost_per_unit: 110, supplier: 'Organic Farm Gate', last_updated: '2026-09-07T09:00:00.000Z' },
+  { id: 'inv-bt-croissants', cafe_id: CAFE_BEAN_ID, name: 'French Pure Butter Croissant Dough', sku: 'BT-RAW-CRS-01', category: 'Frozen Bakery', current_quantity: 40, unit: 'pcs', min_quantity: 15, cost_per_unit: 95, supplier: 'Bridor Gourmet', last_updated: '2026-09-06T10:00:00.000Z' },
+  { id: 'inv-bt-matcha', cafe_id: CAFE_BEAN_ID, name: 'Ceremonial Uji Matcha Pure Grade', sku: 'BT-RAW-MAT-01', category: 'Tea', current_quantity: 750, unit: 'g', min_quantity: 200, cost_per_unit: 8.5, supplier: 'Kyoto Tea Direct', last_updated: '2026-09-05T15:00:00.000Z' },
+  { id: 'inv-bt-truffle-oil', cafe_id: CAFE_BEAN_ID, name: 'White Truffle Infused Olive Oil', sku: 'BT-RAW-TRF-01', category: 'Oils', current_quantity: 800, unit: 'ml', min_quantity: 250, cost_per_unit: 4.8, supplier: 'Urbani Truffles', last_updated: '2026-09-05T11:00:00.000Z' },
+];
+
+// ==========================================================
+// SEED PRODUCTS (TENANT-SCOPED)
+// ==========================================================
+export const initialProducts: Product[] = [
+  // --- Sunrise Cafe Products ---
+  {
+    id: 'prod-sc-cappuccino',
+    cafe_id: CAFE_SUNRISE_ID,
+    category_id: 'cat-sc-coffee',
     name: 'Classic Cappuccino',
-    sku: 'CF-CAP-01',
+    sku: 'SC-CAP-01',
     description: 'Double shot rich espresso with velvety steamed micro-foam and cocoa dust',
     selling_price: 180,
     cost_price: 36,
@@ -301,10 +467,11 @@ export const initialProducts: Product[] = [
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-latte',
-    category_id: 'cat-coffee',
+    id: 'prod-sc-latte',
+    cafe_id: CAFE_SUNRISE_ID,
+    category_id: 'cat-sc-coffee',
     name: 'Vanilla Bean Cafe Latte',
-    sku: 'CF-LAT-02',
+    sku: 'SC-LAT-02',
     description: 'Smooth espresso balanced with steamed milk and premium Madagascar vanilla',
     selling_price: 210,
     cost_price: 44,
@@ -319,118 +486,11 @@ export const initialProducts: Product[] = [
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-espresso',
-    category_id: 'cat-coffee',
-    name: 'Doppio Espresso',
-    sku: 'CF-ESP-03',
-    description: 'Intense double extraction of 100% single-origin Arabica beans',
-    selling_price: 130,
-    cost_price: 22,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 200,
-    min_stock_level: 25,
-    has_recipe: true,
-    created_at: '2026-01-10T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-coldcoffee',
-    category_id: 'cat-coffee',
-    name: 'Signature Cold Coffee Deluxe',
-    sku: 'CF-CLD-04',
-    description: 'Thick blended creamy cold coffee served with chocolate drizzle & vanilla scoop',
-    selling_price: 220,
-    cost_price: 48,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 95,
-    min_stock_level: 15,
-    has_recipe: true,
-    created_at: '2026-01-10T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-caramel-macchiato',
-    category_id: 'cat-coffee',
-    name: 'Iced Caramel Macchiato',
-    sku: 'CF-ICM-05',
-    description: 'Layered espresso, cold fresh milk, vanilla syrup, and golden butterscotch crosshatch',
-    selling_price: 240,
-    cost_price: 52,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 80,
-    min_stock_level: 15,
-    has_recipe: true,
-    created_at: '2026-01-12T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-masala-tea',
-    category_id: 'cat-tea',
-    name: 'Royal Masala Chai Kulhad',
-    sku: 'CF-TEA-01',
-    description: 'Brewed Assam CTC infused with ginger, cardamom, clove, and fresh milk',
-    selling_price: 90,
-    cost_price: 18,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 250,
-    min_stock_level: 30,
-    has_recipe: true,
-    created_at: '2026-01-10T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-matcha',
-    category_id: 'cat-tea',
-    name: 'Japanese Uji Matcha Latte',
-    sku: 'CF-MAT-02',
-    description: 'Ceremonial grade pure matcha green tea whisked with silky warm milk',
-    selling_price: 260,
-    cost_price: 65,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 60,
-    min_stock_level: 10,
-    has_recipe: false,
-    created_at: '2026-01-15T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-berry-cooler',
-    category_id: 'cat-beverages',
-    name: 'Wild Berry Mint Fizz',
-    sku: 'CF-BEV-01',
-    description: 'Sparkling cooler with muddled berries, mint leaves, and lime soda',
-    selling_price: 170,
-    cost_price: 32,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 90,
-    min_stock_level: 15,
-    has_recipe: false,
-    created_at: '2026-01-15T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-paneer-sandwich',
-    category_id: 'cat-sandwiches',
+    id: 'prod-sc-paneer-sandwich',
+    cafe_id: CAFE_SUNRISE_ID,
+    category_id: 'cat-sc-sandwiches',
     name: 'Paneer Tikka Panini Grill',
-    sku: 'CF-SND-01',
+    sku: 'SC-SND-01',
     description: 'Tandoori spiced cottage cheese, peppers, mint chutney & melted cheddar in artisan bread',
     selling_price: 220,
     cost_price: 58,
@@ -445,28 +505,30 @@ export const initialProducts: Product[] = [
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-cheese-toast',
-    category_id: 'cat-sandwiches',
-    name: 'Three Cheese Sourdough Melt',
-    sku: 'CF-SND-02',
-    description: 'Cheddar, Mozzarella, and herb cream cheese toasted on artisanal sourdough',
-    selling_price: 240,
-    cost_price: 68,
+    id: 'prod-sc-coldcoffee',
+    cafe_id: CAFE_SUNRISE_ID,
+    category_id: 'cat-sc-coffee',
+    name: 'Signature Cold Coffee Deluxe',
+    sku: 'SC-CLD-04',
+    description: 'Thick blended creamy cold coffee served with chocolate drizzle & vanilla scoop',
+    selling_price: 220,
+    cost_price: 48,
     gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=500&auto=format&fit=crop&q=80',
+    image_url: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=500&auto=format&fit=crop&q=80',
     is_available: true,
     track_stock: true,
-    stock_quantity: 35,
-    min_stock_level: 10,
-    has_recipe: true,
+    stock_quantity: 95,
+    min_stock_level: 15,
+    has_recipe: false,
     created_at: '2026-01-10T00:00:00.000Z',
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-peri-fries',
-    category_id: 'cat-snacks',
+    id: 'prod-sc-peri-fries',
+    cafe_id: CAFE_SUNRISE_ID,
+    category_id: 'cat-sc-snacks',
     name: 'Peri-Peri Crinkle Fries',
-    sku: 'CF-SNK-01',
+    sku: 'SC-SNK-01',
     description: 'Golden crispy crinkle cut fries tossed in spicy African peri-peri with cheesy dip',
     selling_price: 150,
     cost_price: 34,
@@ -476,222 +538,193 @@ export const initialProducts: Product[] = [
     track_stock: true,
     stock_quantity: 80,
     min_stock_level: 15,
-    has_recipe: true,
+    has_recipe: false,
     created_at: '2026-01-10T00:00:00.000Z',
     updated_at: '2026-09-01T00:00:00.000Z',
   },
+
+  // --- Bean Theory Products (Distinct Menu) ---
   {
-    id: 'prod-pasta-arrabbiata',
-    category_id: 'cat-meals',
-    name: 'Penne Arrabbiata Rustic Bowl',
-    sku: 'CF-MEL-01',
-    description: 'Al dente penne pasta in rich San Marzano spicy tomato garlic sauce with fresh basil',
-    selling_price: 280,
-    cost_price: 72,
+    id: 'prod-bt-ethiopian-pourover',
+    cafe_id: CAFE_BEAN_ID,
+    category_id: 'cat-bt-pour-over',
+    name: 'Ethiopian Yirgacheffe V60',
+    sku: 'BT-V60-01',
+    description: 'Light roast single-origin with floral jasmine aromatics, bergamot, and peach acidity',
+    selling_price: 290,
+    cost_price: 62,
     gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1621996346565-e3d5d6281014?w=500&auto=format&fit=crop&q=80',
+    image_url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
+    is_available: true,
+    track_stock: true,
+    stock_quantity: 110,
+    min_stock_level: 15,
+    has_recipe: true,
+    created_at: '2026-02-05T00:00:00.000Z',
+    updated_at: '2026-09-01T00:00:00.000Z',
+  },
+  {
+    id: 'prod-bt-coldbrew-tonic',
+    cafe_id: CAFE_BEAN_ID,
+    category_id: 'cat-bt-cold-brew',
+    name: 'Cold Brew Citrus Tonic',
+    sku: 'BT-CBT-02',
+    description: '18-hour steeped single-origin cold brew topped with premium Indian tonic & charred orange',
+    selling_price: 260,
+    cost_price: 52,
+    gst_rate: 5,
+    image_url: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=500&auto=format&fit=crop&q=80',
+    is_available: true,
+    track_stock: true,
+    stock_quantity: 75,
+    min_stock_level: 12,
+    has_recipe: false,
+    created_at: '2026-02-05T00:00:00.000Z',
+    updated_at: '2026-09-01T00:00:00.000Z',
+  },
+  {
+    id: 'prod-bt-avocado-toast',
+    cafe_id: CAFE_BEAN_ID,
+    category_id: 'cat-bt-brunch',
+    name: 'Sourdough Avocado Tartine',
+    sku: 'BT-AVO-03',
+    description: 'Crushed Hass avocado, pomegranate arils, Danish feta, chili flakes & micro-herbs on sourdough',
+    selling_price: 340,
+    cost_price: 88,
+    gst_rate: 5,
+    image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&auto=format&fit=crop&q=80',
     is_available: true,
     track_stock: true,
     stock_quantity: 40,
     min_stock_level: 8,
     has_recipe: true,
-    created_at: '2026-01-10T00:00:00.000Z',
+    created_at: '2026-02-05T00:00:00.000Z',
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-brownie',
-    category_id: 'cat-desserts',
-    name: 'Warm Fudge Walnut Brownie',
-    sku: 'CF-DES-01',
-    description: 'Gooey 70% dark Belgian chocolate brownie loaded with toasted California walnuts',
-    selling_price: 160,
-    cost_price: 40,
+    id: 'prod-bt-croissant',
+    cafe_id: CAFE_BEAN_ID,
+    category_id: 'cat-bt-bakery',
+    name: 'Almond Frangipane Croissant',
+    sku: 'BT-CRS-04',
+    description: 'Twice-baked butter croissant filled with velvety almond cream and toasted sliced almonds',
+    selling_price: 220,
+    cost_price: 70,
     gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: true,
-    stock_quantity: 50,
-    min_stock_level: 10,
-    has_recipe: false,
-    created_at: '2026-01-10T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-cheesecake',
-    category_id: 'cat-desserts',
-    name: 'New York Blueberry Cheesecake',
-    sku: 'CF-DES-02',
-    description: 'Creamy baked Philadelphia style cheesecake topped with wild blueberry compote',
-    selling_price: 240,
-    cost_price: 68,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?w=500&auto=format&fit=crop&q=80',
+    image_url: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&auto=format&fit=crop&q=80',
     is_available: true,
     track_stock: true,
     stock_quantity: 30,
-    min_stock_level: 8,
+    min_stock_level: 10,
     has_recipe: false,
-    created_at: '2026-01-10T00:00:00.000Z',
+    created_at: '2026-02-05T00:00:00.000Z',
     updated_at: '2026-09-01T00:00:00.000Z',
   },
   {
-    id: 'prod-extra-oatmilk',
-    category_id: 'cat-addons',
-    name: 'Upgrade to Oat Milk',
-    sku: 'CF-ADD-01',
-    description: 'Substitute dairy with creamy Barista Oat Milk',
-    selling_price: 45,
-    cost_price: 22,
+    id: 'prod-bt-matcha-latte',
+    cafe_id: CAFE_BEAN_ID,
+    category_id: 'cat-bt-pour-over',
+    name: 'Ceremonial Uji Matcha Latte',
+    sku: 'BT-MAT-05',
+    description: 'First-harvest Kyoto ceremonial matcha whisked with warm almond milk',
+    selling_price: 280,
+    cost_price: 68,
     gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500&auto=format&fit=crop&q=80',
+    image_url: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=500&auto=format&fit=crop&q=80',
     is_available: true,
-    track_stock: false,
-    stock_quantity: 999,
-    min_stock_level: 0,
+    track_stock: true,
+    stock_quantity: 60,
+    min_stock_level: 10,
     has_recipe: false,
-    created_at: '2026-01-10T00:00:00.000Z',
-    updated_at: '2026-09-01T00:00:00.000Z',
-  },
-  {
-    id: 'prod-extra-shot',
-    category_id: 'cat-addons',
-    name: 'Extra Espresso Shot',
-    sku: 'CF-ADD-02',
-    description: 'Add an extra rich shot of Arabica espresso',
-    selling_price: 40,
-    cost_price: 11,
-    gst_rate: 5,
-    image_url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
-    is_available: true,
-    track_stock: false,
-    stock_quantity: 999,
-    min_stock_level: 0,
-    has_recipe: false,
-    created_at: '2026-01-10T00:00:00.000Z',
+    created_at: '2026-02-05T00:00:00.000Z',
     updated_at: '2026-09-01T00:00:00.000Z',
   },
 ];
 
+// ==========================================================
+// SEED RECIPES (TENANT-SCOPED)
+// ==========================================================
 export const initialRecipes: Recipe[] = [
+  // Sunrise Cafe Recipe
   {
-    id: 'rec-cap-01',
-    product_id: 'prod-cappuccino',
+    id: 'rec-sc-cap-01',
+    cafe_id: CAFE_SUNRISE_ID,
+    product_id: 'prod-sc-cappuccino',
     product_name: 'Classic Cappuccino',
     instructions: '1. Grind 18g beans. 2. Pull 36g espresso. 3. Steam 150ml whole milk to 65C. 4. Pour with microfoam art.',
     prep_time_mins: 3,
     calculated_cogs: 36.35,
     items: [
-      { inventory_id: 'inv-beans', inventory_name: 'Arabica Espresso Roast Beans', quantity_required: 0.018, unit: 'kg', cost_contribution: 21.60 },
-      { inventory_id: 'inv-milk', inventory_name: 'Whole Cream Dairy Milk', quantity_required: 0.150, unit: 'L', cost_contribution: 9.75 },
-      { inventory_id: 'inv-cups', inventory_name: 'Eco 80mm Takeaway Hot Cups', quantity_required: 1, unit: 'pcs', cost_contribution: 4.50 },
-      { inventory_id: 'inv-sugar', inventory_name: 'Organic Brown Sugar', quantity_required: 0.006, unit: 'kg', cost_contribution: 0.45 },
+      { inventory_id: 'inv-sc-beans', inventory_name: 'Arabica Espresso Roast Beans', quantity_required: 0.018, unit: 'kg', cost_contribution: 21.60 },
+      { inventory_id: 'inv-sc-milk', inventory_name: 'Whole Cream Dairy Milk', quantity_required: 0.150, unit: 'L', cost_contribution: 9.75 },
+      { inventory_id: 'inv-sc-cups', inventory_name: 'Eco 80mm Takeaway Hot Cups', quantity_required: 1, unit: 'pcs', cost_contribution: 4.50 },
+      { inventory_id: 'inv-sc-sugar', inventory_name: 'Organic Brown Sugar', quantity_required: 0.006, unit: 'kg', cost_contribution: 0.45 },
     ],
   },
   {
-    id: 'rec-lat-02',
-    product_id: 'prod-latte',
-    product_name: 'Vanilla Bean Cafe Latte',
-    instructions: '1. Add 20ml vanilla syrup in cup. 2. Pull double espresso shot. 3. Pour 200ml velvety steamed milk.',
-    prep_time_mins: 3,
-    calculated_cogs: 44.10,
-    items: [
-      { inventory_id: 'inv-beans', inventory_name: 'Arabica Espresso Roast Beans', quantity_required: 0.018, unit: 'kg', cost_contribution: 21.60 },
-      { inventory_id: 'inv-milk', inventory_name: 'Whole Cream Dairy Milk', quantity_required: 0.200, unit: 'L', cost_contribution: 13.00 },
-      { inventory_id: 'inv-vanilla', inventory_name: 'Monin Madagascar Vanilla Syrup', quantity_required: 20, unit: 'ml', cost_contribution: 22.00 },
-      { inventory_id: 'inv-cups', inventory_name: 'Eco 80mm Takeaway Hot Cups', quantity_required: 1, unit: 'pcs', cost_contribution: 4.50 },
-    ],
-  },
-  {
-    id: 'rec-tea-01',
-    product_id: 'prod-masala-tea',
-    product_name: 'Royal Masala Chai Kulhad',
-    instructions: '1. Boil 60ml water with 5g tea & 2g chai masala. 2. Add 120ml whole milk & 6g sugar. 3. Double strain into hot cup.',
-    prep_time_mins: 4,
-    calculated_cogs: 18.20,
-    items: [
-      { inventory_id: 'inv-tea-leaves', inventory_name: 'Assam Royal CTC Tea Leaves', quantity_required: 0.005, unit: 'kg', cost_contribution: 2.25 },
-      { inventory_id: 'inv-chai-masala', inventory_name: 'Signature Secret Chai Masala', quantity_required: 2, unit: 'g', cost_contribution: 3.60 },
-      { inventory_id: 'inv-milk', inventory_name: 'Whole Cream Dairy Milk', quantity_required: 0.120, unit: 'L', cost_contribution: 7.80 },
-      { inventory_id: 'inv-sugar', inventory_name: 'Organic Brown Sugar', quantity_required: 0.006, unit: 'kg', cost_contribution: 0.45 },
-      { inventory_id: 'inv-cups', inventory_name: 'Eco 80mm Takeaway Hot Cups', quantity_required: 1, unit: 'pcs', cost_contribution: 4.50 },
-    ],
-  },
-  {
-    id: 'rec-snd-01',
-    product_id: 'prod-paneer-sandwich',
+    id: 'rec-sc-snd-01',
+    cafe_id: CAFE_SUNRISE_ID,
+    product_id: 'prod-sc-paneer-sandwich',
     product_name: 'Paneer Tikka Panini Grill',
-    instructions: '1. Slice sourdough loaf. 2. Layer 80g paneer with mint chutney & 30g cheese blend. 3. Grill for 4 mins until crispy golden.',
+    instructions: '1. Slice sourdough loaf. 2. Layer 80g paneer with mint chutney. 3. Grill for 4 mins.',
     prep_time_mins: 6,
     calculated_cogs: 58.60,
     items: [
-      { inventory_id: 'inv-bread', inventory_name: 'Artisan Sourdough Loaves', quantity_required: 0.20, unit: 'pcs', cost_contribution: 16.00 },
-      { inventory_id: 'inv-paneer', inventory_name: 'Fresh Malai Paneer', quantity_required: 0.080, unit: 'kg', cost_contribution: 30.40 },
-      { inventory_id: 'inv-cheese', inventory_name: 'Aged Cheddar & Mozzarella Blend', quantity_required: 0.030, unit: 'kg', cost_contribution: 18.60 },
+      { inventory_id: 'inv-sc-bread', inventory_name: 'Artisan Sourdough Loaves', quantity_required: 0.20, unit: 'pcs', cost_contribution: 16.00 },
+      { inventory_id: 'inv-sc-paneer', inventory_name: 'Fresh Malai Paneer', quantity_required: 0.080, unit: 'kg', cost_contribution: 30.40 },
+    ],
+  },
+
+  // Bean Theory Recipe (Isolated)
+  {
+    id: 'rec-bt-v60-01',
+    cafe_id: CAFE_BEAN_ID,
+    product_id: 'prod-bt-ethiopian-pourover',
+    product_name: 'Ethiopian Yirgacheffe V60',
+    instructions: '1. Dose 15g medium-coarse beans. 2. Bloom with 45g water for 45s. 3. Three pulse pours to 250g final weight.',
+    prep_time_mins: 4,
+    calculated_cogs: 62.00,
+    items: [
+      { inventory_id: 'inv-bt-yirgacheffe', inventory_name: 'Ethiopian Yirgacheffe Washed Beans', quantity_required: 0.015, unit: 'kg', cost_contribution: 36.00 },
+    ],
+  },
+  {
+    id: 'rec-bt-avo-03',
+    cafe_id: CAFE_BEAN_ID,
+    product_id: 'prod-bt-avocado-toast',
+    product_name: 'Sourdough Avocado Tartine',
+    instructions: '1. Toast sourdough slice. 2. Mash 1 whole Hass avocado with sea salt & lemon. 3. Top with feta and chili flakes.',
+    prep_time_mins: 5,
+    calculated_cogs: 88.00,
+    items: [
+      { inventory_id: 'inv-bt-avocados', inventory_name: 'Hass Avocados Grade A', quantity_required: 1, unit: 'pcs', cost_contribution: 110.00 },
     ],
   },
 ];
 
+// ==========================================================
+// SEED CUSTOMERS (TENANT-SCOPED)
+// ==========================================================
 export const initialCustomers: Customer[] = [
-  { id: 'cust-001', name: 'Rohan Deshmukh', phone: '9820011223', email: 'rohan.d@gmail.com', loyalty_points: 145, total_orders: 14, total_spent: 4250, last_visit: '2026-09-07T14:20:00.000Z', notes: 'Prefers oat milk in cappuccino', created_at: '2026-02-10T00:00:00.000Z' },
-  { id: 'cust-002', name: 'Ananya Iyer', phone: '9820044556', email: 'ananya.iyer@outlook.com', loyalty_points: 210, total_orders: 18, total_spent: 6890, last_visit: '2026-09-07T16:45:00.000Z', notes: 'Regular work-from-cafe customer', created_at: '2026-01-20T00:00:00.000Z' },
-  { id: 'cust-003', name: 'Vikram Mehta', phone: '9820077889', email: 'vikram.mehta@techcorp.in', loyalty_points: 75, total_orders: 7, total_spent: 2450, last_visit: '2026-09-06T19:10:00.000Z', notes: 'Enjoys iced caramel macchiato', created_at: '2026-03-05T00:00:00.000Z' },
-  { id: 'cust-004', name: 'Sneha Kapoor', phone: '9820099001', email: 'sneha.k@gmail.com', loyalty_points: 320, total_orders: 25, total_spent: 9800, last_visit: '2026-09-07T12:30:00.000Z', notes: 'VIP Gold tier customer', created_at: '2026-01-05T00:00:00.000Z' },
-  { id: 'cust-005', name: 'Arjun Nair', phone: '9820033112', email: 'arjun.nair@live.com', loyalty_points: 40, total_orders: 4, total_spent: 1280, last_visit: '2026-09-05T17:15:00.000Z', notes: '', created_at: '2026-04-12T00:00:00.000Z' },
+  // Sunrise Cafe Customers (Bengaluru)
+  { id: 'cust-sc-001', cafe_id: CAFE_SUNRISE_ID, name: 'Rohan Deshmukh', phone: '9820011223', email: 'rohan.d@gmail.com', loyalty_points: 145, total_orders: 14, total_spent: 4250, last_visit: '2026-09-07T14:20:00.000Z', notes: 'Prefers oat milk in cappuccino', created_at: '2026-02-10T00:00:00.000Z' },
+  { id: 'cust-sc-002', cafe_id: CAFE_SUNRISE_ID, name: 'Ananya Iyer', phone: '9820044556', email: 'ananya.iyer@outlook.com', loyalty_points: 210, total_orders: 18, total_spent: 6890, last_visit: '2026-09-07T16:45:00.000Z', notes: 'Regular work-from-cafe customer', created_at: '2026-01-20T00:00:00.000Z' },
+  { id: 'cust-sc-003', cafe_id: CAFE_SUNRISE_ID, name: 'Vikram Mehta', phone: '9820077889', email: 'vikram.mehta@techcorp.in', loyalty_points: 75, total_orders: 7, total_spent: 2450, last_visit: '2026-09-06T19:10:00.000Z', notes: 'Enjoys iced drinks', created_at: '2026-03-05T00:00:00.000Z' },
+
+  // Bean Theory Customers (Mumbai Bandra - Completely Isolated)
+  { id: 'cust-bt-001', cafe_id: CAFE_BEAN_ID, name: 'Tara Sutaria', phone: '9820199887', email: 'tara.s@filmcity.in', loyalty_points: 340, total_orders: 22, total_spent: 9600, last_visit: '2026-09-07T11:30:00.000Z', notes: 'V60 Pour Over connoisseur', created_at: '2026-02-15T00:00:00.000Z' },
+  { id: 'cust-bt-002', cafe_id: CAFE_BEAN_ID, name: 'Armaan Malik', phone: '9820155443', email: 'armaan.m@soundhub.com', loyalty_points: 180, total_orders: 12, total_spent: 5400, last_visit: '2026-09-07T15:10:00.000Z', notes: 'Loves Cold Brew Tonic & Tartine', created_at: '2026-02-20T00:00:00.000Z' },
 ];
 
-export const initialSettings: CafeSettings = {
-  cafe_name: 'CAFEFLOW Coffee & Roastery',
-  tagline: 'Smart Billing. Smarter Cafe.',
-  address: 'Shop 4-5, Ground Floor, Indiranagar 100ft Road, Bengaluru, Karnataka 560038',
-  phone: '+91 80 4123 9876',
-  email: 'hello@cafeflow.com',
-  gstin: '29ABCDE1234F1Z5',
-  currency: '₹',
-  invoice_prefix: 'CF-2026-',
-  default_gst_rate: 5,
-  loyalty_spend_per_point: 100,
-  loyalty_point_value: 1.0,
-  max_discount_percent: 30,
-  enable_ai_insights: true,
-};
-
-export const initialNotifications: Notification[] = [
-  {
-    id: 'notif-001',
-    type: 'LOW_STOCK',
-    title: 'Low Stock Alert: Whole Cream Dairy Milk',
-    message: 'Milk stock is at 8.5 L (Threshold: 12.0 L). AI forecasts exhaustion in ~1.8 days.',
-    severity: 'WARNING',
-    link: '/inventory',
-    is_read: false,
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'notif-002',
-    type: 'AI_INSIGHT',
-    title: 'AI Revenue Spike Forecast',
-    message: 'Tomorrow evening is projected to generate ₹32,500 (+14% vs avg). Recommended: prep extra cold brew batches.',
-    severity: 'INFO',
-    link: '/ai-insights',
-    is_read: false,
-    created_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-  {
-    id: 'notif-003',
-    type: 'PAYMENT',
-    title: 'Shift Reconciliation Pending',
-    message: 'Morning shift closing balance matched expected cash within ₹50.',
-    severity: 'SUCCESS',
-    link: '/shifts',
-    is_read: true,
-    created_at: new Date(Date.now() - 18000000).toISOString(),
-  },
-];
-
+// ==========================================================
+// SEED SHIFTS (TENANT-SCOPED)
+// ==========================================================
 export const initialShifts: Shift[] = [
+  // Sunrise Cafe Shift
   {
-    id: 'shift-live-current',
-    user_id: 'usr-cashier-003',
+    id: 'shift-sc-live',
+    cafe_id: CAFE_SUNRISE_ID,
+    user_id: 'usr-sunrise-cashier',
     user_name: 'Rahul Sen',
     start_time: new Date(Date.now() - 14400000).toISOString(),
     opening_cash: 5000,
@@ -704,28 +737,54 @@ export const initialShifts: Shift[] = [
     status: 'OPEN',
     notes: 'Afternoon prime shift active',
   },
+  // Bean Theory Shift
   {
-    id: 'shift-yesterday-close',
-    user_id: 'usr-cashier-003',
-    user_name: 'Rahul Sen',
-    start_time: new Date(Date.now() - 86400000 - 28800000).toISOString(),
-    end_time: new Date(Date.now() - 86400000).toISOString(),
-    opening_cash: 5000,
-    cash_sales: 11200,
-    upi_sales: 18900,
-    card_sales: 6400,
-    total_sales: 36500,
-    total_orders: 58,
-    expected_cash: 16200,
-    actual_cash: 16200,
-    cash_difference: 0,
-    status: 'CLOSED',
-    notes: 'Shift balanced cleanly. No cash variances.',
-  }
+    id: 'shift-bt-live',
+    cafe_id: CAFE_BEAN_ID,
+    user_id: 'usr-bean-cashier',
+    user_name: 'Kabir Merchant',
+    start_time: new Date(Date.now() - 10800000).toISOString(),
+    opening_cash: 7000,
+    cash_sales: 4200,
+    upi_sales: 18600,
+    card_sales: 11400,
+    total_sales: 34200,
+    total_orders: 38,
+    expected_cash: 11200,
+    status: 'OPEN',
+    notes: 'Bandra specialty coffee session',
+  },
+];
+
+// ==========================================================
+// SEED NOTIFICATIONS & AUDIT (TENANT-SCOPED)
+// ==========================================================
+export const initialNotifications: Notification[] = [
+  {
+    id: 'notif-sc-01',
+    cafe_id: CAFE_SUNRISE_ID,
+    type: 'LOW_STOCK',
+    title: 'Low Stock Alert: Whole Cream Dairy Milk',
+    message: 'Milk stock is at 8.5 L (Threshold: 12.0 L). AI forecasts exhaustion in ~1.8 days.',
+    severity: 'WARNING',
+    link: '/inventory',
+    is_read: false,
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'notif-bt-01',
+    cafe_id: CAFE_BEAN_ID,
+    type: 'AI_INSIGHT',
+    title: 'Bean Theory Single-Origin Spike',
+    message: 'Ethiopian V60 pour over velocity is up +24% this morning.',
+    severity: 'INFO',
+    link: '/ai-insights',
+    is_read: false,
+    created_at: new Date(Date.now() - 1800000).toISOString(),
+  },
 ];
 
 export const initialAuditLogs: AuditLog[] = [
-  { id: 'log-01', user_name: 'Aarav Sharma', role: 'OWNER', action: 'System Initialization', details: 'Database configured with seed menu and inventory catalog', created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: 'log-02', user_name: 'Rahul Sen', role: 'CASHIER', action: 'Shift Opened', details: 'Registered opening cash float ₹5,000 for register #1', created_at: new Date(Date.now() - 14400000).toISOString() },
-  { id: 'log-03', user_name: 'Rahul Sen', role: 'CASHIER', action: 'Invoice Generated', details: 'Created Invoice #CF-2026-1042 for Sneha Kapoor (₹720 via UPI)', created_at: new Date(Date.now() - 7200000).toISOString() },
+  { id: 'log-sc-01', cafe_id: CAFE_SUNRISE_ID, user_name: 'Aarav Sharma', role: 'OWNER', action: 'System Initialization', details: 'Configured Sunrise Cafe tenant environment', created_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: 'log-bt-01', cafe_id: CAFE_BEAN_ID, user_name: 'Devika Singhania', role: 'OWNER', action: 'System Initialization', details: 'Configured Bean Theory tenant environment', created_at: new Date(Date.now() - 86400000).toISOString() },
 ];

@@ -3,11 +3,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
 import { InventoryService } from '../services/inventoryService';
-import { Order, Invoice, OrderItem } from '../database/seedData';
+import { Order, Invoice, OrderItem, CAFE_SUNRISE_ID } from '../database/seedData';
 
 let invoiceSequence = 1050;
 
 export const createOrder = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const {
     items,
     customer_id,
@@ -28,13 +29,14 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 
   const cashierId = req.user?.id || 'usr-cashier-003';
   const cashierName = req.user?.name || 'Rahul Sen';
+  const cafeSettings = db.getCafeSettings(cafeId);
 
   // 1. Calculate items subtotal and GST
   let subtotal = 0;
   let totalGst = 0;
 
   const processedItems: OrderItem[] = items.map((item: any) => {
-    const product = db.products.find(p => p.id === item.product_id);
+    const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id);
     const unitPrice = product ? product.selling_price : Number(item.unit_price || 0);
     const costPrice = product ? product.cost_price : 0;
     const gstRate = product ? product.gst_rate : 5;
@@ -49,7 +51,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     return {
       product_id: item.product_id,
       product_name: product ? product.name : item.product_name,
-      category_name: db.categories.find(c => c.id === product?.category_id)?.name || 'General',
+      category_name: db.categories.find(c => c.cafe_id === cafeId && c.id === product?.category_id)?.name || 'General',
       quantity: qty,
       unit_price: unitPrice,
       cost_price: costPrice,
@@ -69,7 +71,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
   let loyaltyDiscount = 0;
   let pointsRedeemed = Number(points_to_redeem || 0);
   if (pointsRedeemed > 0) {
-    loyaltyDiscount = Number((pointsRedeemed * db.settings.loyalty_point_value).toFixed(2));
+    loyaltyDiscount = Number((pointsRedeemed * cafeSettings.loyalty_point_value).toFixed(2));
   }
 
   const totalDiscount = Number((calculatedDiscount + loyaltyDiscount).toFixed(2));
@@ -80,20 +82,21 @@ export const createOrder = (req: AuthRequest, res: Response) => {
   const changeReturned = payment_method === 'CASH' ? Math.max(0, Number((tendered - totalAmount).toFixed(2))) : 0;
 
   // Invoice Number
-  const invoicePrefix = db.settings.invoice_prefix || 'CF-2026-';
+  const invoicePrefix = cafeSettings.invoice_prefix || 'CF-2026-';
   const invoiceNumber = `${invoicePrefix}${invoiceSequence++}`;
 
   // Points earned calculation (e.g. ₹100 = 1 point)
-  const pointsEarned = Math.floor(totalAmount / (db.settings.loyalty_spend_per_point || 100));
+  const pointsEarned = Math.floor(totalAmount / (cafeSettings.loyalty_spend_per_point || 100));
 
-  // Find active shift
-  const activeShift = db.shifts.find(s => s.status === 'OPEN');
+  // Find active shift for this specific cafe
+  const activeShift = db.shifts.find(s => s.cafe_id === cafeId && s.status === 'OPEN');
 
   const orderId = uuidv4();
   const now = new Date().toISOString();
 
   const newOrder: Order = {
     id: orderId,
+    cafe_id: cafeId,
     invoice_number: invoiceNumber,
     shift_id: activeShift?.id,
     customer_id: customer_id || undefined,
@@ -124,6 +127,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
   // 3. Create official Invoice
   const newInvoice: Invoice = {
     id: uuidv4(),
+    cafe_id: cafeId,
     order_id: orderId,
     invoice_number: invoiceNumber,
     invoice_date: now,
@@ -144,12 +148,12 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 
   db.invoices.unshift(newInvoice);
 
-  // 4. Update Inventory & Recipe BOM
-  InventoryService.processOrderStockDeduction(processedItems, orderId, cashierName);
+  // 4. Update Inventory & Recipe BOM scoped to cafe
+  InventoryService.processOrderStockDeduction(cafeId, processedItems, orderId, cashierName);
 
-  // 5. Update Customer history & Loyalty points
+  // 5. Update Customer history & Loyalty points within cafe
   if (customer_id) {
-    const customer = db.customers.find(c => c.id === customer_id);
+    const customer = db.customers.find(c => c.cafe_id === cafeId && c.id === customer_id);
     if (customer) {
       customer.total_orders += 1;
       customer.total_spent = Number((customer.total_spent + totalAmount).toFixed(2));
@@ -174,6 +178,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 
   // Audit log
   db.logAudit(
+    cafeId,
     cashierName,
     req.user?.role || 'CASHIER',
     'Generate Invoice',
@@ -189,6 +194,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 };
 
 export const holdOrder = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { items, customer_name, customer_phone, notes } = req.body;
 
   if (!items || items.length === 0) {
@@ -197,6 +203,7 @@ export const holdOrder = (req: AuthRequest, res: Response) => {
 
   const heldOrder: any = {
     id: `held-${uuidv4().substring(0, 8)}`,
+    cafe_id: cafeId,
     customer_name: customer_name || 'Walk-in Customer',
     customer_phone,
     items,
@@ -209,12 +216,17 @@ export const holdOrder = (req: AuthRequest, res: Response) => {
 };
 
 export const getHeldOrders = (req: Request, res: Response) => {
-  return res.json({ success: true, count: db.heldOrders.length, data: db.heldOrders });
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const held = db.heldOrders.filter(h => h.cafe_id === cafeId);
+  return res.json({ success: true, count: held.length, data: held });
 };
 
 export const removeHeldOrder = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const index = db.heldOrders.findIndex(h => h.id === id);
+  const index = db.heldOrders.findIndex(h => h.cafe_id === cafeId && h.id === id);
   if (index >= 0) {
     const resumed = db.heldOrders.splice(index, 1)[0];
     return res.json({ success: true, message: 'Held bill resumed', data: resumed });
@@ -223,8 +235,10 @@ export const removeHeldOrder = (req: Request, res: Response) => {
 };
 
 export const getOrders = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { limit = 50, status, search } = req.query;
-  let orders = [...db.orders];
+  let orders = db.orders.filter(o => o.cafe_id === cafeId);
 
   if (status) {
     orders = orders.filter(o => o.status === status);
@@ -248,12 +262,14 @@ export const getOrders = (req: Request, res: Response) => {
 };
 
 export const getOrderById = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const order = db.orders.find(o => o.id === id || o.invoice_number === id);
+  const order = db.orders.find(o => o.cafe_id === cafeId && (o.id === id || o.invoice_number === id));
   if (!order) {
-    return res.status(404).json({ success: false, message: 'Order not found' });
+    return res.status(404).json({ success: false, message: 'Order not found in this cafe' });
   }
-  const invoice = db.invoices.find(i => i.order_id === order.id || i.invoice_number === order.invoice_number);
+  const invoice = db.invoices.find(i => i.cafe_id === cafeId && (i.order_id === order.id || i.invoice_number === order.invoice_number));
 
   return res.json({ success: true, data: { ...order, invoice } });
 };

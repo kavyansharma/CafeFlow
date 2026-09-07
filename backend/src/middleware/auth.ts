@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
+import { db } from '../database/db';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -8,6 +9,7 @@ export interface AuthRequest extends Request {
     email: string;
     name: string;
     role: 'OWNER' | 'MANAGER' | 'CASHIER';
+    cafe_id: string;
   };
 }
 
@@ -21,6 +23,9 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 
   try {
     const decoded = jwt.verify(token, config.jwtSecret) as any;
+    if (!decoded.cafe_id) {
+      return res.status(403).json({ success: false, message: 'Invalid session: Missing tenant cafe association.' });
+    }
     req.user = decoded;
     next();
   } catch (err) {
@@ -41,4 +46,20 @@ export const requireRoles = (roles: Array<'OWNER' | 'MANAGER' | 'CASHIER'>) => {
     }
     next();
   };
+};
+
+export const requireActiveCafe = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user?.cafe_id) {
+    return res.status(403).json({ success: false, message: 'Tenant cafe context missing.' });
+  }
+
+  const cafe = db.getCafe(req.user.cafe_id);
+  if (!cafe) {
+    return res.status(404).json({ success: false, message: 'Assigned cafe not found.' });
+  }
+  if (cafe.status === 'SUSPENDED') {
+    return res.status(403).json({ success: false, message: 'This cafe account is currently suspended.' });
+  }
+
+  next();
 };

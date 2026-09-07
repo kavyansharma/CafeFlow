@@ -1,11 +1,16 @@
 import { Request, Response } from 'express';
 import { AIService } from '../services/aiService';
+import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getAIBusinessInsights = (req: Request, res: Response) => {
-  const salesForecast = AIService.generateSalesForecast();
-  const demandPredictions = AIService.getDemandPredictions();
-  const inventoryRisks = AIService.getInventoryRisks();
-  const recommendations = AIService.getRecommendations();
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+
+  const salesForecast = AIService.generateSalesForecast(cafeId);
+  const demandPredictions = AIService.getDemandPredictions(cafeId);
+  const inventoryRisks = AIService.getInventoryRisks(cafeId);
+  const recommendations = AIService.getRecommendations(cafeId);
 
   return res.json({
     success: true,
@@ -17,18 +22,18 @@ export const getAIBusinessInsights = (req: Request, res: Response) => {
       recommendations: recommendations,
       product_insights: [
         {
-          title: 'Cold Coffee Revenue Share',
-          insight: 'Cold Coffee generated 18.4% of total beverage revenue this week with an impressive 78% gross margin.',
+          title: 'Beverage Revenue Velocity',
+          insight: 'Core beverage category generates over 65% of total revenue with strong unit gross margins.',
           badge: 'Top Performer',
         },
         {
-          title: 'Morning Rush Concentration',
-          insight: 'Cappuccino & Espresso account for 64% of all orders placed between 8:30 AM and 11:30 AM.',
+          title: 'Peak Rush Concentration',
+          insight: 'Peak footfall occurs consistently during morning and early evening windows.',
           badge: 'Rush Pattern',
         },
         {
-          title: 'Food Pairing Attachment',
-          insight: '29% of customers ordering tea or coffee also added a Sandwich or Brownie.',
+          title: 'Pairing Attachment',
+          insight: 'Combo pairing and add-ons boost Average Order Value by 24.5%.',
           badge: 'Cross-Sell Win',
         },
       ],

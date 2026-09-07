@@ -1,23 +1,21 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getSettings = (req: Request, res: Response) => {
-  return res.json({ success: true, data: db.settings });
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const settings = db.getCafeSettings(cafeId);
+  return res.json({ success: true, data: settings });
 };
 
 export const updateSettings = (req: AuthRequest, res: Response) => {
+  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const updates = req.body;
-  db.settings = {
-    ...db.settings,
-    ...updates,
-    default_gst_rate: updates.default_gst_rate !== undefined ? Number(updates.default_gst_rate) : db.settings.default_gst_rate,
-    loyalty_spend_per_point: updates.loyalty_spend_per_point !== undefined ? Number(updates.loyalty_spend_per_point) : db.settings.loyalty_spend_per_point,
-    loyalty_point_value: updates.loyalty_point_value !== undefined ? Number(updates.loyalty_point_value) : db.settings.loyalty_point_value,
-    max_discount_percent: updates.max_discount_percent !== undefined ? Number(updates.max_discount_percent) : db.settings.max_discount_percent,
-  };
+  const updatedSettings = db.updateCafeSettings(cafeId, updates);
 
-  db.logAudit(req.user?.name || 'Owner', 'OWNER', 'Settings Updated', 'Updated Cafe & Billing configuration');
+  db.logAudit(cafeId, req.user?.name || 'Owner', 'OWNER', 'Settings Updated', `Updated Cafe & Billing configuration for ${updatedSettings.cafe_name}`);
 
-  return res.json({ success: true, message: 'Settings updated successfully', data: db.settings });
+  return res.json({ success: true, message: 'Settings updated successfully', data: updatedSettings });
 };

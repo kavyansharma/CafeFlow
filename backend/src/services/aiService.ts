@@ -47,21 +47,23 @@ export interface BusinessRecommendation {
 
 export class AIService {
   /**
-   * Generates next-day sales forecast using weighted moving averages & day-of-week seasonality.
+   * Generates next-day sales forecast using tenant-specific historical sales.
    */
-  public static generateSalesForecast(): SalesForecast {
-    const orders = db.orders.filter(o => o.status === 'COMPLETED');
+  public static generateSalesForecast(cafeId: string): SalesForecast {
+    const orders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
+    const cafe = db.getCafe(cafeId);
+
     if (orders.length === 0) {
       return {
-        predictedRevenueTomorrow: { min: 25000, max: 32000, likely: 28500 },
-        predictedOrdersTomorrow: { min: 40, max: 60 },
-        confidenceScore: 88,
-        growthFactor: 7.5,
-        dayOfWeekPattern: 'Mid-week morning rush & evening dessert traffic',
+        predictedRevenueTomorrow: { min: 20000, max: 28000, likely: 24000 },
+        predictedOrdersTomorrow: { min: 30, max: 45 },
+        confidenceScore: 82,
+        growthFactor: 5.0,
+        dayOfWeekPattern: 'Initial baseline projection for newly onboarded cafe',
       };
     }
 
-    // Group sales by day
+    // Group sales by day for this cafe
     const dailySales: Record<string, { revenue: number; orders: number }> = {};
     orders.forEach(o => {
       const dateKey = o.created_at.split('T')[0];
@@ -73,11 +75,10 @@ export class AIService {
     const days = Object.keys(dailySales).sort();
     const recentRevenues = days.slice(-7).map(d => dailySales[d].revenue);
     const avgRevenue = recentRevenues.reduce((a, b) => a + b, 0) / (recentRevenues.length || 1);
-    
-    // Day of week multiplier (boost for weekends or peak days)
+
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const dayOfWeek = tomorrow.getDay(); // 0 = Sun, 6 = Sat
+    const dayOfWeek = tomorrow.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const dayMultiplier = isWeekend ? 1.22 : 1.05;
 
@@ -92,78 +93,55 @@ export class AIService {
         likely: baseLikely,
       },
       predictedOrdersTomorrow: {
-        min: Math.round(min / 180),
+        min: Math.round(min / 190),
         max: Math.round(max / 160),
       },
       confidenceScore: 92.4,
       growthFactor: Number((((baseLikely - avgRevenue) / (avgRevenue || 1)) * 100).toFixed(1)),
       dayOfWeekPattern: isWeekend
-        ? 'High-volume weekend brunch & evening artisan coffee traffic expected.'
-        : 'Steady weekday morning commute rush (8:30–11:00 AM) and 4–7 PM snack window.',
+        ? `High weekend footfall projected for ${cafe?.name || 'this cafe'}.`
+        : 'Steady weekday rush hours (8:30–11:00 AM & 4:30–7:00 PM).',
     };
   }
 
   /**
-   * Evaluates item velocity & upcoming demand
+   * Evaluates item velocity & upcoming demand for the specific cafe.
    */
-  public static getDemandPredictions(): DemandPrediction[] {
-    const predictions: DemandPrediction[] = [
-      {
-        productId: 'prod-cappuccino',
-        productName: 'Classic Cappuccino',
-        category: 'Coffee',
-        expectedUnits: 135,
-        velocityTrend: 'SURGING',
-        peakTimeSlot: '08:30 AM – 11:30 AM',
-        reason: 'Consistently accounts for 32% of morning beverage volume with high repeat frequency.',
-      },
-      {
-        productId: 'prod-coldcoffee',
-        productName: 'Signature Cold Coffee Deluxe',
-        category: 'Coffee',
-        expectedUnits: 98,
-        velocityTrend: 'SURGING',
-        peakTimeSlot: '03:00 PM – 06:30 PM',
-        reason: 'Afternoon iced drink demand shows +18% weekly growth pattern.',
-      },
-      {
-        productId: 'prod-paneer-sandwich',
-        productName: 'Paneer Tikka Panini Grill',
-        category: 'Sandwiches',
-        expectedUnits: 65,
-        velocityTrend: 'STABLE',
-        peakTimeSlot: '01:00 PM – 03:00 PM',
-        reason: 'Top lunch pick with consistent 72% gross margin contribution.',
-      },
-      {
-        productId: 'prod-brownie',
-        productName: 'Warm Fudge Walnut Brownie',
-        category: 'Desserts',
-        expectedUnits: 48,
-        velocityTrend: 'SURGING',
-        peakTimeSlot: '07:00 PM – 09:30 PM',
-        reason: 'Evening dinner add-on rate increased by 22% over last 5 days.',
-      },
-      {
-        productId: 'prod-matcha',
-        productName: 'Japanese Uji Matcha Latte',
-        category: 'Tea',
-        expectedUnits: 25,
-        velocityTrend: 'STABLE',
-        peakTimeSlot: '11:00 AM – 02:00 PM',
-        reason: 'Niche wellness beverage commanding 75% gross profit margin.',
-      }
-    ];
+  public static getDemandPredictions(cafeId: string): DemandPrediction[] {
+    const products = db.products.filter(p => p.cafe_id === cafeId);
+    const orders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
 
-    return predictions;
+    const counts: Record<string, number> = {};
+    orders.forEach(o => {
+      o.items.forEach(i => {
+        counts[i.product_id] = (counts[i.product_id] || 0) + i.quantity;
+      });
+    });
+
+    const sortedProducts = [...products].sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
+
+    return sortedProducts.slice(0, 4).map((p, idx) => {
+      const units = counts[p.id] || Math.floor(Math.random() * 20) + 15;
+      const isTop = idx === 0;
+      return {
+        productId: p.id,
+        productName: p.name,
+        category: db.categories.find(c => c.id === p.category_id)?.name || 'General',
+        expectedUnits: Math.round(units * 1.15),
+        velocityTrend: isTop ? 'SURGING' : 'STABLE',
+        peakTimeSlot: isTop ? '08:30 AM – 11:30 AM' : '04:00 PM – 07:00 PM',
+        reason: `Accounts for strong repeat volume in ${p.category_name || 'menu'}.`,
+      };
+    });
   }
 
   /**
-   * Analyzes ingredient consumption rates and predicts days until exhaustion.
+   * Analyzes tenant ingredient consumption rates and predicts days until exhaustion.
    */
-  public static getInventoryRisks(): InventoryRisk[] {
-    return db.inventory.map(inv => {
-      // Calculate realistic burn rate based on current stock vs min quantity
+  public static getInventoryRisks(cafeId: string): InventoryRisk[] {
+    const inventory = db.inventory.filter(i => i.cafe_id === cafeId);
+
+    return inventory.map(inv => {
       let dailyBurn = 0;
       if (inv.unit === 'kg') dailyBurn = Number((inv.min_quantity * 0.45).toFixed(2));
       else if (inv.unit === 'L') dailyBurn = Number((inv.min_quantity * 0.55).toFixed(2));
@@ -191,50 +169,44 @@ export class AIService {
   }
 
   /**
-   * Generates actionable recommendations
+   * Generates actionable recommendations scoped to the cafe.
    */
-  public static getRecommendations(): BusinessRecommendation[] {
-    return [
-      {
-        id: 'rec-ai-01',
+  public static getRecommendations(cafeId: string): BusinessRecommendation[] {
+    const cafe = db.getCafe(cafeId);
+    const lowStock = db.inventory.filter(i => i.cafe_id === cafeId && i.current_quantity <= i.min_quantity);
+
+    const recs: BusinessRecommendation[] = [];
+
+    if (lowStock.length > 0) {
+      recs.push({
+        id: `rec-inv-${cafeId}`,
         category: 'INVENTORY',
-        title: 'Replenish Whole Cream Milk Before Evening Shift',
-        description: 'Milk stock is projected to drop below minimum safety threshold (12L) within 1.8 days due to morning cappuccino velocity.',
+        title: `Restock ${lowStock[0].name} for ${cafe?.name || 'Cafe'}`,
+        description: `${lowStock[0].name} is at ${lowStock[0].current_quantity} ${lowStock[0].unit} (Threshold: ${lowStock[0].min_quantity} ${lowStock[0].unit}).`,
         impact: 'HIGH',
-        actionableStep: 'Create a purchase order for 25L with Amul Fresh Hub.',
-      },
+        actionableStep: `Place a purchase order with ${lowStock[0].supplier || 'supplier'} immediately.`,
+      });
+    }
+
+    recs.push(
       {
-        id: 'rec-ai-02',
+        id: `rec-rev-${cafeId}`,
         category: 'REVENUE',
-        title: 'Promote Cold Brew & Brownie Pairing Combo',
-        description: 'Orders bundling Cold Coffee with Fudge Brownie have an Average Order Value of ₹380 (+147% vs single beverage orders).',
+        title: 'Optimize Beverage & Food Pairing Combo',
+        description: 'Orders bundling specialty beverages with baked goods average 45% higher ticket value.',
         impact: 'HIGH',
-        actionableStep: 'Enable a special POS 10% discount combo for Coffee + Dessert.',
+        actionableStep: 'Enable a special POS 10% discount combo for Beverage + Snack.',
       },
       {
-        id: 'rec-ai-03',
-        category: 'PRICING',
-        title: 'Optimize Plant-Based Milk Margin',
-        description: 'Oat Milk upgrades have a 92% customer acceptance rate among espresso buyers with minimal price sensitivity.',
-        impact: 'MEDIUM',
-        actionableStep: 'Maintain premium ₹45 add-on pricing to capture ~₹23 net profit per oat cup.',
-      },
-      {
-        id: 'rec-ai-04',
-        category: 'STAFFING',
-        title: 'Schedule Additional Barista Support (4:00 PM – 7:30 PM)',
-        description: 'Historical trend indicates 46% of daily orders concentrate in the evening rush window, creating a queue bottleneck.',
-        impact: 'HIGH',
-        actionableStep: 'Ensure 2 baristas are stationed at the espresso bar during 16:00–19:30.',
-      },
-      {
-        id: 'rec-ai-05',
+        id: `rec-loyalty-${cafeId}`,
         category: 'PROMOTION',
-        title: 'Re-engage 12 At-Risk Loyalty Customers',
-        description: '12 high-value customers with >150 loyalty points have not visited in the last 14 days.',
+        title: 'Promote Loyalty Sign-ups during Rush Hours',
+        description: 'Customers with loyalty accounts have 3.2x higher 30-day visit frequency.',
         impact: 'MEDIUM',
-        actionableStep: 'Trigger a ₹50 off SMS/WhatsApp campaign on their next visit.',
+        actionableStep: 'Prompt cashiers to attach customer mobile numbers during checkout.',
       }
-    ];
+    );
+
+    return recs;
   }
 }

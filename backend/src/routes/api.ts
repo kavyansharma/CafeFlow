@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, getCurrentUser, switchDemoUser } from '../controllers/authController';
+import { login, getCurrentUser, switchDemoUser, registerCafe } from '../controllers/authController';
 import {
   getProducts,
   getProductById,
@@ -76,57 +76,58 @@ import { authenticateToken, requireRoles } from '../middleware/auth';
 
 const router = Router();
 
-// --- AUTH ---
+// --- AUTH (Public & Authenticated) ---
+router.post('/auth/register-cafe', registerCafe);
 router.post('/auth/login', login);
 router.get('/auth/me', authenticateToken, getCurrentUser);
 router.post('/auth/demo-switch', switchDemoUser);
 
 // --- PRODUCTS & CATEGORIES ---
-router.get('/products', getProducts);
-router.get('/products/:id', getProductById);
+router.get('/products', authenticateToken, getProducts);
+router.get('/products/:id', authenticateToken, getProductById);
 router.post('/products', authenticateToken, requireRoles(['OWNER', 'MANAGER']), createProduct);
 router.put('/products/:id', authenticateToken, requireRoles(['OWNER', 'MANAGER']), updateProduct);
 router.delete('/products/:id', authenticateToken, requireRoles(['OWNER', 'MANAGER']), deleteProduct);
 
-router.get('/categories', getCategories);
+router.get('/categories', authenticateToken, getCategories);
 router.post('/categories', authenticateToken, requireRoles(['OWNER', 'MANAGER']), createCategory);
 
 // --- INVENTORY & STOCK ---
-router.get('/inventory', getInventory);
+router.get('/inventory', authenticateToken, getInventory);
 router.post('/inventory', authenticateToken, requireRoles(['OWNER', 'MANAGER']), createInventoryItem);
 router.put('/inventory/:id', authenticateToken, requireRoles(['OWNER', 'MANAGER']), updateInventoryItem);
 router.post('/inventory/adjust', authenticateToken, requireRoles(['OWNER', 'MANAGER']), adjustStock);
-router.get('/inventory/movements', getMovements);
+router.get('/inventory/movements', authenticateToken, getMovements);
 
 // --- RECIPES (BOM & COGS) ---
-router.get('/recipes', getRecipes);
-router.get('/recipes/:productId', getRecipeByProductId);
+router.get('/recipes', authenticateToken, getRecipes);
+router.get('/recipes/:productId', authenticateToken, getRecipeByProductId);
 router.post('/recipes', authenticateToken, requireRoles(['OWNER', 'MANAGER']), saveRecipe);
 router.delete('/recipes/:productId', authenticateToken, requireRoles(['OWNER', 'MANAGER']), deleteRecipe);
 
 // --- CUSTOMERS & LOYALTY ---
-router.get('/customers', getCustomers);
-router.get('/customers/:id', getCustomerById);
+router.get('/customers', authenticateToken, getCustomers);
+router.get('/customers/:id', authenticateToken, getCustomerById);
 router.post('/customers', authenticateToken, createCustomer);
 router.put('/customers/:id', authenticateToken, updateCustomer);
 
 // --- POS ORDERS & HOLD SYSTEM ---
 router.post('/orders', authenticateToken, createOrder);
 router.post('/orders/hold', authenticateToken, holdOrder);
-router.get('/orders/held', getHeldOrders);
-router.delete('/orders/held/:id', removeHeldOrder);
-router.get('/orders', getOrders);
-router.get('/orders/:id', getOrderById);
+router.get('/orders/held', authenticateToken, getHeldOrders);
+router.delete('/orders/held/:id', authenticateToken, removeHeldOrder);
+router.get('/orders', authenticateToken, getOrders);
+router.get('/orders/:id', authenticateToken, getOrderById);
 
 // --- INVOICES ---
-router.get('/invoices', getInvoices);
-router.get('/invoices/:id', getInvoiceById);
+router.get('/invoices', authenticateToken, getInvoices);
+router.get('/invoices/:id', authenticateToken, getInvoiceById);
 
 // --- SHIFTS ---
-router.get('/shifts/current', getCurrentShift);
+router.get('/shifts/current', authenticateToken, getCurrentShift);
 router.post('/shifts/open', authenticateToken, openShift);
 router.post('/shifts/close', authenticateToken, closeShift);
-router.get('/shifts/history', getShiftHistory);
+router.get('/shifts/history', authenticateToken, getShiftHistory);
 
 // --- STAFF & RBAC ---
 router.get('/staff', authenticateToken, requireRoles(['OWNER']), getStaff);
@@ -135,23 +136,23 @@ router.put('/staff/:id', authenticateToken, requireRoles(['OWNER']), updateStaff
 router.get('/staff/audit-logs', authenticateToken, requireRoles(['OWNER', 'MANAGER']), getAuditLogs);
 
 // --- SALES & REPORTING ---
-router.get('/sales/summary', getSalesSummary);
-router.get('/sales/export', exportSalesCSV);
+router.get('/sales/summary', authenticateToken, getSalesSummary);
+router.get('/sales/export', authenticateToken, exportSalesCSV);
 
 // --- ANALYTICS ---
-router.get('/analytics/dashboard', getDashboardAnalytics);
-router.get('/analytics/deep', getDeepAnalytics);
+router.get('/analytics/dashboard', authenticateToken, getDashboardAnalytics);
+router.get('/analytics/deep', authenticateToken, getDeepAnalytics);
 
 // --- AI BUSINESS INSIGHTS ---
-router.get('/ai/insights', getAIBusinessInsights);
+router.get('/ai/insights', authenticateToken, getAIBusinessInsights);
 
 // --- SETTINGS ---
-router.get('/settings', getSettings);
+router.get('/settings', authenticateToken, getSettings);
 router.put('/settings', authenticateToken, requireRoles(['OWNER']), updateSettings);
 
 // --- NOTIFICATIONS ---
-router.get('/notifications', getNotifications);
-router.put('/notifications/:id/read', markNotificationRead);
-router.post('/notifications/read-all', markAllNotificationsRead);
+router.get('/notifications', authenticateToken, getNotifications);
+router.put('/notifications/:id/read', authenticateToken, markNotificationRead);
+router.post('/notifications/read-all', authenticateToken, markAllNotificationsRead);
 
 export default router;

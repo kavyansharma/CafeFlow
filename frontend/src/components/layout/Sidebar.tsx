@@ -31,7 +31,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { user, logout, hasRole, switchDemoRole } = useAuth();
+  const { user, currentCafe, logout, hasRole, switchDemoRole } = useAuth();
   const navigate = useNavigate();
 
   const navItems: NavItem[] = [
@@ -129,17 +129,19 @@ export const Sidebar: React.FC = () => {
       {/* Brand Header */}
       <div className="p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-glow-amber">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-slate-950 font-black shadow-glow-amber shrink-0">
             <CafeLogo className="w-6 h-6 stroke-[2.5]" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="font-extrabold text-lg tracking-wider text-slate-900 dark:text-white">CAFEFLOW</span>
-              <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                POS
+              <span className="text-[9px] uppercase font-bold tracking-widest px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                SaaS
               </span>
             </div>
-            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 tracking-tight">Smart Billing. Smarter Cafe.</p>
+            <p className="text-[10px] font-semibold text-amber-500 truncate tracking-tight">
+              {currentCafe?.name || 'Sunrise Cafe & Roastery'}
+            </p>
           </div>
         </div>
       </div>
@@ -189,14 +191,14 @@ export const Sidebar: React.FC = () => {
       {/* Role Switcher Demo Bar */}
       <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40">
         <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
-          <span>Quick Role Switch</span>
+          <span>Role in {currentCafe?.slug === 'bean-theory' ? 'Bean Theory' : 'Sunrise'}</span>
           <ShieldCheck className="w-3 h-3 text-amber-500" />
         </div>
         <div className="grid grid-cols-3 gap-1">
           {(['OWNER', 'MANAGER', 'CASHIER'] as Role[]).map(r => (
             <button
               key={r}
-              onClick={() => switchDemoRole(r)}
+              onClick={() => switchDemoRole(r, currentCafe?.slug || 'sunrise-cafe')}
               className={clsx(
                 'px-1 py-1 rounded text-[10px] font-bold transition-all truncate text-center',
                 user?.role === r

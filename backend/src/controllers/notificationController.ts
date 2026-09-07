@@ -1,27 +1,36 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
+import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getNotifications = (req: Request, res: Response) => {
-  const unreadCount = db.notifications.filter(n => !n.is_read).length;
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeNotifs = db.notifications.filter(n => n.cafe_id === cafeId);
+  const unreadCount = cafeNotifs.filter(n => !n.is_read).length;
   return res.json({
     success: true,
     unread_count: unreadCount,
-    data: db.notifications,
+    data: cafeNotifs,
   });
 };
 
 export const markNotificationRead = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
   const { id } = req.params;
-  const notif = db.notifications.find(n => n.id === id);
+  const notif = db.notifications.find(n => n.cafe_id === cafeId && n.id === id);
   if (notif) {
     notif.is_read = true;
     return res.json({ success: true, message: 'Marked as read', data: notif });
   }
-  return res.status(404).json({ success: false, message: 'Notification not found' });
+  return res.status(404).json({ success: false, message: 'Notification not found in this cafe' });
 };
 
 export const markAllNotificationsRead = (req: Request, res: Response) => {
-  db.notifications.forEach(n => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  db.notifications.filter(n => n.cafe_id === cafeId).forEach(n => {
     n.is_read = true;
   });
   return res.json({ success: true, message: 'All notifications marked as read' });

@@ -46,11 +46,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const api = {
   // Auth
+  registerCafe: (data: any) =>
+    request<any>('/auth/register-cafe', { method: 'POST', body: JSON.stringify(data) }),
   login: (credentials: { email: string; password: string }) =>
     request<any>('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getCurrentUser: () => request<any>('/auth/me'),
-  switchDemoUser: (role: 'OWNER' | 'MANAGER' | 'CASHIER') =>
-    request<any>('/auth/demo-switch', { method: 'POST', body: JSON.stringify({ role }) }),
+  switchDemoUser: (role: 'OWNER' | 'MANAGER' | 'CASHIER', cafeSlug?: string) =>
+    request<any>('/auth/demo-switch', { method: 'POST', body: JSON.stringify({ role, cafeSlug }) }),
 
   // Products & Categories
   getProducts: (params?: { category_id?: string; search?: string; available_only?: boolean }) => {

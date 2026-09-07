@@ -1,7 +1,12 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
+import { AuthRequest } from '../middleware/auth';
+import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getDashboardAnalytics = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
 
@@ -9,23 +14,24 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
   yesterday.setDate(now.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-  const todayOrders = db.orders.filter(o => o.status === 'COMPLETED' && o.created_at.startsWith(todayStr));
-  const yesterdayOrders = db.orders.filter(o => o.status === 'COMPLETED' && o.created_at.startsWith(yesterdayStr));
+  const cafeOrders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
+  const todayOrders = cafeOrders.filter(o => o.created_at.startsWith(todayStr));
+  const yesterdayOrders = cafeOrders.filter(o => o.created_at.startsWith(yesterdayStr));
 
   const todayRevenue = todayOrders.reduce((acc, o) => acc + o.total_amount, 0);
   const yesterdayRevenue = yesterdayOrders.reduce((acc, o) => acc + o.total_amount, 0);
   const revenueGrowth = yesterdayRevenue > 0 ? Number((((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100).toFixed(1)) : 12.5;
 
-  const todayOrdersCount = todayOrders.length || (yesterdayOrders.length ? Math.round(yesterdayOrders.length * 1.08) : 18);
-  const yesterdayOrdersCount = yesterdayOrders.length || 15;
+  const todayOrdersCount = todayOrders.length || (yesterdayOrders.length ? Math.round(yesterdayOrders.length * 1.08) : (cafeOrders.length > 0 ? Math.min(cafeOrders.length, 12) : 0));
+  const yesterdayOrdersCount = yesterdayOrders.length || (cafeOrders.length > 0 ? Math.min(cafeOrders.length, 10) : 0);
   const ordersGrowth = yesterdayOrdersCount > 0 ? Number((((todayOrdersCount - yesterdayOrdersCount) / yesterdayOrdersCount) * 100).toFixed(1)) : 8.2;
 
-  const effectiveTodayRev = todayRevenue > 0 ? todayRevenue : 28450;
+  const effectiveTodayRev = todayRevenue > 0 ? todayRevenue : (cafeOrders.length > 0 ? Number((cafeOrders.reduce((a, o) => a + o.total_amount, 0) / Math.max(1, Math.min(7, cafeOrders.length))).toFixed(2)) : 0);
   const aov = Number((effectiveTodayRev / (todayOrdersCount || 1)).toFixed(2));
 
-  // Product sales velocity
+  // Product sales velocity for this cafe
   const productPerformance: Record<string, { id: string; name: string; category: string; units: number; revenue: number; cost: number }> = {};
-  db.orders.forEach(o => {
+  cafeOrders.forEach(o => {
     o.items.forEach(item => {
       if (!productPerformance[item.product_id]) {
         productPerformance[item.product_id] = {
@@ -46,9 +52,9 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
   const sortedProducts = Object.values(productPerformance).sort((a, b) => b.units - a.units);
   const topSelling = sortedProducts.slice(0, 6);
 
-  // Low stock alerts
+  // Low stock alerts for this cafe
   const lowStockRaw = db.inventory
-    .filter(i => i.current_quantity <= i.min_quantity)
+    .filter(i => i.cafe_id === cafeId && i.current_quantity <= i.min_quantity)
     .map(i => ({
       name: i.name,
       remaining: `${i.current_quantity} ${i.unit}`,
@@ -57,7 +63,7 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
     }));
 
   const lowStockProducts = db.products
-    .filter(p => p.track_stock && p.stock_quantity <= p.min_stock_level)
+    .filter(p => p.cafe_id === cafeId && p.track_stock && p.stock_quantity <= p.min_stock_level)
     .map(p => ({
       name: p.name,
       remaining: `${p.stock_quantity} units`,
@@ -67,26 +73,31 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
 
   const lowStockAlerts = [...lowStockRaw, ...lowStockProducts];
 
-  // Recent transactions
-  const recentTransactions = db.invoices.slice(0, 7).map(inv => ({
-    invoice_number: inv.invoice_number,
-    customer: inv.customer_name,
-    amount: inv.grand_total,
-    payment_method: inv.payment_method,
-    time: inv.created_at,
-    status: inv.payment_status,
-  }));
+  // Recent transactions for this cafe
+  const recentTransactions = db.invoices
+    .filter(i => i.cafe_id === cafeId)
+    .slice(0, 7)
+    .map(inv => ({
+      invoice_number: inv.invoice_number,
+      customer: inv.customer_name,
+      amount: inv.grand_total,
+      payment_method: inv.payment_method,
+      time: inv.created_at,
+      status: inv.payment_status,
+    }));
 
-  // Hourly sales pattern
+  // Hourly sales pattern based on tenant data or baseline
   const hourlyPattern = [
-    { hour: '08:00', sales: 1850 },
-    { hour: '10:00', sales: 4200 },
-    { hour: '12:00', sales: 3800 },
-    { hour: '14:00', sales: 2900 },
-    { hour: '16:00', sales: 5400 },
-    { hour: '18:00', sales: 6800 },
-    { hour: '20:00', sales: 3500 },
+    { hour: '08:00', sales: Math.round(effectiveTodayRev * 0.08) },
+    { hour: '10:00', sales: Math.round(effectiveTodayRev * 0.18) },
+    { hour: '12:00', sales: Math.round(effectiveTodayRev * 0.15) },
+    { hour: '14:00', sales: Math.round(effectiveTodayRev * 0.12) },
+    { hour: '16:00', sales: Math.round(effectiveTodayRev * 0.22) },
+    { hour: '18:00', sales: Math.round(effectiveTodayRev * 0.25) },
+    { hour: '20:00', sales: Math.round(effectiveTodayRev * 0.10) },
   ];
+
+  const cafeCustomers = db.customers.filter(c => c.cafe_id === cafeId);
 
   return res.json({
     success: true,
@@ -97,7 +108,7 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
       orders_growth: ordersGrowth,
       average_order_value: aov,
       aov_growth: 4.3,
-      total_customers: db.customers.length + 1240,
+      total_customers: cafeCustomers.length,
       customer_growth: 6.8,
     },
     top_selling_products: topSelling,
@@ -108,10 +119,15 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
 };
 
 export const getDeepAnalytics = (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeOrders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
+  const cafeCustomers = db.customers.filter(c => c.cafe_id === cafeId);
+
   // Margin analysis
   const productPerformance: Record<string, { id: string; name: string; category: string; units: number; revenue: number; cost: number; gross_profit: number; margin_percent: number }> = {};
   
-  db.orders.forEach(o => {
+  cafeOrders.forEach(o => {
     o.items.forEach(item => {
       if (!productPerformance[item.product_id]) {
         productPerformance[item.product_id] = {
@@ -142,8 +158,8 @@ export const getDeepAnalytics = (req: Request, res: Response) => {
   const lowestSellers = [...products].sort((a, b) => a.units - b.units).slice(0, 5);
 
   // Customer segment analytics
-  const totalCustomerCount = db.customers.length;
-  const repeatCustomers = db.customers.filter(c => c.total_orders > 1).length;
+  const totalCustomerCount = cafeCustomers.length;
+  const repeatCustomers = cafeCustomers.filter(c => c.total_orders > 1).length;
   const repeatRate = totalCustomerCount > 0 ? Number(((repeatCustomers / totalCustomerCount) * 100).toFixed(1)) : 0;
 
   return res.json({
@@ -158,7 +174,7 @@ export const getDeepAnalytics = (req: Request, res: Response) => {
       repeat_customers: repeatCustomers,
       repeat_rate_percent: repeatRate,
       average_spend_per_customer: Number(
-        (db.customers.reduce((acc, c) => acc + c.total_spent, 0) / (totalCustomerCount || 1)).toFixed(2)
+        (cafeCustomers.reduce((acc, c) => acc + c.total_spent, 0) / (totalCustomerCount || 1)).toFixed(2)
       ),
     },
   });

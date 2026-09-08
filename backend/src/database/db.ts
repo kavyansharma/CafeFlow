@@ -42,10 +42,13 @@ class DatabaseStore {
   public shifts: Shift[] = [...initialShifts];
   public notifications: Notification[] = [...initialNotifications];
   public auditLogs: AuditLog[] = [...initialAuditLogs];
+  public invoiceSequences: Map<string, number> = new Map();
 
   constructor() {
     this.seedHistoricalOrdersForCafe(CAFE_SUNRISE_ID, 'SC-2026-', 1001);
     this.seedHistoricalOrdersForCafe(CAFE_BEAN_ID, 'BT-2026-', 2001);
+    this.invoiceSequences.set(CAFE_SUNRISE_ID, 1050);
+    this.invoiceSequences.set(CAFE_BEAN_ID, 2050);
   }
 
   private seedHistoricalOrdersForCafe(cafeId: string, prefix: string, startSeq: number) {
@@ -197,6 +200,14 @@ class DatabaseStore {
       cafe.updated_at = new Date().toISOString();
     }
     return this.getCafeSettings(cafeId);
+  }
+
+  public getNextInvoiceNumber(cafeId: string): string {
+    const cafe = this.cafes.find(c => c.id === cafeId);
+    const prefix = cafe?.invoice_prefix || 'CF-2026-';
+    const currentSeq = this.invoiceSequences.get(cafeId) || 1001;
+    this.invoiceSequences.set(cafeId, currentSeq + 1);
+    return `${prefix}${currentSeq}`;
   }
 
   public logAudit(cafeId: string, user_name: string, role: string, action: string, details: string) {

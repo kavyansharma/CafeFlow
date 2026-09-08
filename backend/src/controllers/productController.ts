@@ -76,27 +76,61 @@ export const createProduct = (req: AuthRequest, res: Response) => {
     has_recipe,
   } = req.body;
 
-  if (!name || !category_id || !selling_price) {
-    return res.status(400).json({ success: false, message: 'Name, Category, and Selling Price are required' });
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid product name is required' });
   }
 
-  const generatedSku = sku || `CF-${name.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  if (!category_id) {
+    return res.status(400).json({ success: false, message: 'Category ID is required' });
+  }
+
+  const categoryExists = db.categories.some(c => c.cafe_id === cafeId && c.id === category_id);
+  if (!categoryExists) {
+    return res.status(400).json({ success: false, message: 'Category not found in this cafe' });
+  }
+
+  const numSellingPrice = Number(selling_price);
+  if (isNaN(numSellingPrice) || numSellingPrice <= 0) {
+    return res.status(400).json({ success: false, message: 'Selling price must be a positive number greater than 0' });
+  }
+
+  const numCostPrice = cost_price !== undefined ? Number(cost_price) : 0;
+  if (isNaN(numCostPrice) || numCostPrice < 0) {
+    return res.status(400).json({ success: false, message: 'Cost price must be non-negative' });
+  }
+
+  const numGstRate = gst_rate !== undefined ? Number(gst_rate) : 5;
+  if (isNaN(numGstRate) || numGstRate < 0 || numGstRate > 28) {
+    return res.status(400).json({ success: false, message: 'GST rate must be between 0% and 28%' });
+  }
+
+  const numStockQty = stock_quantity !== undefined ? Number(stock_quantity) : 0;
+  if (isNaN(numStockQty) || numStockQty < 0) {
+    return res.status(400).json({ success: false, message: 'Stock quantity cannot be negative' });
+  }
+
+  const numMinStock = min_stock_level !== undefined ? Number(min_stock_level) : 0;
+  if (isNaN(numMinStock) || numMinStock < 0) {
+    return res.status(400).json({ success: false, message: 'Minimum stock level cannot be negative' });
+  }
+
+  const generatedSku = sku || `CF-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
   const newProduct = {
     id: `prod-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
-    name,
+    name: name.trim(),
     category_id,
     sku: generatedSku,
     description: description || '',
-    selling_price: Number(selling_price),
-    cost_price: Number(cost_price || 0),
-    gst_rate: Number(gst_rate || 5),
+    selling_price: numSellingPrice,
+    cost_price: numCostPrice,
+    gst_rate: numGstRate,
     image_url: image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
     is_available: is_available !== undefined ? Boolean(is_available) : true,
     track_stock: Boolean(track_stock),
-    stock_quantity: Number(stock_quantity || 0),
-    min_stock_level: Number(min_stock_level || 0),
+    stock_quantity: numStockQty,
+    min_stock_level: numMinStock,
     has_recipe: Boolean(has_recipe),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -118,6 +152,49 @@ export const updateProduct = (req: AuthRequest, res: Response) => {
   }
 
   const existing = db.products[productIndex];
+
+  if (req.body.category_id && req.body.category_id !== existing.category_id) {
+    const categoryExists = db.categories.some(c => c.cafe_id === cafeId && c.id === req.body.category_id);
+    if (!categoryExists) {
+      return res.status(400).json({ success: false, message: 'Category not found in this cafe' });
+    }
+  }
+
+  if (req.body.selling_price !== undefined) {
+    const sp = Number(req.body.selling_price);
+    if (isNaN(sp) || sp <= 0) {
+      return res.status(400).json({ success: false, message: 'Selling price must be greater than 0' });
+    }
+  }
+
+  if (req.body.cost_price !== undefined) {
+    const cp = Number(req.body.cost_price);
+    if (isNaN(cp) || cp < 0) {
+      return res.status(400).json({ success: false, message: 'Cost price must be non-negative' });
+    }
+  }
+
+  if (req.body.gst_rate !== undefined) {
+    const gst = Number(req.body.gst_rate);
+    if (isNaN(gst) || gst < 0 || gst > 28) {
+      return res.status(400).json({ success: false, message: 'GST rate must be between 0% and 28%' });
+    }
+  }
+
+  if (req.body.stock_quantity !== undefined) {
+    const sq = Number(req.body.stock_quantity);
+    if (isNaN(sq) || sq < 0) {
+      return res.status(400).json({ success: false, message: 'Stock quantity cannot be negative' });
+    }
+  }
+
+  if (req.body.min_stock_level !== undefined) {
+    const msl = Number(req.body.min_stock_level);
+    if (isNaN(msl) || msl < 0) {
+      return res.status(400).json({ success: false, message: 'Minimum stock level cannot be negative' });
+    }
+  }
+
   const updated = {
     ...existing,
     ...req.body,
@@ -170,15 +247,22 @@ export const getCategories = (req: Request, res: Response) => {
 export const createCategory = (req: AuthRequest, res: Response) => {
   const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { name, description, icon } = req.body;
-  if (!name) {
+  if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Category name is required' });
   }
 
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const trimmedName = name.trim();
+  const slug = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  
+  const existingCat = db.categories.find(c => c.cafe_id === cafeId && (c.name.toLowerCase() === trimmedName.toLowerCase() || c.slug === slug));
+  if (existingCat) {
+    return res.status(409).json({ success: false, message: 'Category with this name already exists in this cafe' });
+  }
+
   const newCat = {
     id: `cat-${uuidv4().substring(0, 6)}`,
     cafe_id: cafeId,
-    name,
+    name: trimmedName,
     slug,
     description: description || '',
     icon: icon || 'Coffee',

@@ -23,13 +23,29 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 
   try {
     const decoded = jwt.verify(token, config.jwtSecret) as any;
-    if (!decoded.cafe_id) {
-      return res.status(403).json({ success: false, message: 'Invalid session: Missing tenant cafe association.' });
+    if (!decoded || !decoded.id || !decoded.cafe_id) {
+      return res.status(401).json({ success: false, message: 'Invalid session token: Missing claims.' });
     }
-    req.user = decoded;
+
+    const dbUser = db.users.find(u => u.id === decoded.id);
+    if (!dbUser || dbUser.is_active === false) {
+      return res.status(401).json({ success: false, message: 'User account is deactivated or not found.' });
+    }
+
+    if (dbUser.cafe_id !== decoded.cafe_id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Tenant context mismatch.' });
+    }
+
+    req.user = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name,
+      role: dbUser.role,
+      cafe_id: dbUser.cafe_id,
+    };
     next();
   } catch (err) {
-    return res.status(403).json({ success: false, message: 'Invalid or expired session token.' });
+    return res.status(401).json({ success: false, message: 'Invalid or expired session token.' });
   }
 };
 

@@ -49,23 +49,42 @@ export const createInventoryItem = (req: AuthRequest, res: Response) => {
   const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { name, category, current_quantity, unit, min_quantity, cost_per_unit, supplier } = req.body;
 
-  if (!name || !unit) {
-    return res.status(400).json({ success: false, message: 'Name and unit are required' });
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid item name is required' });
   }
 
-  const sku = `RAW-${name.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  if (!unit || typeof unit !== 'string' || !unit.trim()) {
+    return res.status(400).json({ success: false, message: 'Unit of measurement is required' });
+  }
+
+  const numQty = current_quantity !== undefined ? Number(current_quantity) : 0;
+  if (isNaN(numQty) || numQty < 0) {
+    return res.status(400).json({ success: false, message: 'Initial quantity cannot be negative' });
+  }
+
+  const numMinQty = min_quantity !== undefined ? Number(min_quantity) : 0;
+  if (isNaN(numMinQty) || numMinQty < 0) {
+    return res.status(400).json({ success: false, message: 'Minimum quantity cannot be negative' });
+  }
+
+  const numCost = cost_per_unit !== undefined ? Number(cost_per_unit) : 0;
+  if (isNaN(numCost) || numCost < 0) {
+    return res.status(400).json({ success: false, message: 'Cost per unit cannot be negative' });
+  }
+
+  const sku = `RAW-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
   const newItem = {
     id: `inv-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
-    name,
+    name: name.trim(),
     sku,
-    category: category || 'General',
-    current_quantity: Number(current_quantity || 0),
-    unit,
-    min_quantity: Number(min_quantity || 0),
-    cost_per_unit: Number(cost_per_unit || 0),
-    supplier: supplier || 'Local Vendor',
+    category: category ? String(category).trim() : 'General',
+    current_quantity: numQty,
+    unit: unit.trim(),
+    min_quantity: numMinQty,
+    cost_per_unit: numCost,
+    supplier: supplier ? String(supplier).trim() : 'Local Vendor',
     last_updated: new Date().toISOString(),
   };
 
@@ -102,6 +121,27 @@ export const updateInventoryItem = (req: AuthRequest, res: Response) => {
     return res.status(404).json({ success: false, message: 'Inventory item not found in this cafe' });
   }
 
+  if (req.body.current_quantity !== undefined) {
+    const qty = Number(req.body.current_quantity);
+    if (isNaN(qty) || qty < 0) {
+      return res.status(400).json({ success: false, message: 'Current quantity cannot be negative' });
+    }
+  }
+
+  if (req.body.min_quantity !== undefined) {
+    const minQty = Number(req.body.min_quantity);
+    if (isNaN(minQty) || minQty < 0) {
+      return res.status(400).json({ success: false, message: 'Minimum quantity cannot be negative' });
+    }
+  }
+
+  if (req.body.cost_per_unit !== undefined) {
+    const cost = Number(req.body.cost_per_unit);
+    if (isNaN(cost) || cost < 0) {
+      return res.status(400).json({ success: false, message: 'Cost per unit cannot be negative' });
+    }
+  }
+
   const existing = db.inventory[index];
   const updated = {
     ...existing,
@@ -127,11 +167,21 @@ export const adjustStock = (req: AuthRequest, res: Response) => {
     return res.status(400).json({ success: false, message: 'Inventory ID, quantity change, and movement type are required' });
   }
 
+  const validMovements = ['PURCHASE', 'USAGE', 'WASTAGE', 'AUDIT_CORRECTION', 'RETURN'];
+  if (!validMovements.includes(movement_type)) {
+    return res.status(400).json({ success: false, message: `Invalid movement type. Allowed: ${validMovements.join(', ')}` });
+  }
+
+  const delta = Number(quantity_change);
+  if (isNaN(delta) || delta === 0) {
+    return res.status(400).json({ success: false, message: 'Quantity change must be a non-zero number' });
+  }
+
   try {
     const result = InventoryService.adjustStock(
       cafeId,
       inventory_id,
-      Number(quantity_change),
+      delta,
       movement_type,
       reason,
       req.user?.name || 'Staff'

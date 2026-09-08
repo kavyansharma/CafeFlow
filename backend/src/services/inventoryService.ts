@@ -4,6 +4,62 @@ import { OrderItem } from '../database/seedData';
 
 export class InventoryService {
   /**
+   * Pre-validate stock availability for all direct products and recipe BOM raw materials.
+   * Fails atomically before modifying database state or creating orders.
+   */
+  public static validateOrderStockAvailability(cafeId: string, orderItems: OrderItem[]): { available: boolean; error?: string } {
+    // 1. Direct stock verification
+    for (const item of orderItems) {
+      const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id);
+      if (!product) {
+        return { available: false, error: `Product not found: ${item.product_name || item.product_id}` };
+      }
+      if (!product.is_available) {
+        return { available: false, error: `Product ${product.name} is marked as currently unavailable.` };
+      }
+      if (product.track_stock && product.stock_quantity < item.quantity) {
+        return {
+          available: false,
+          error: `Insufficient stock for ${product.name}. Available: ${product.stock_quantity}, Requested: ${item.quantity}`,
+        };
+      }
+    }
+
+    // 2. Aggregate recipe raw material requirements across cart
+    const requiredRawMaterials: Record<string, { name: string; required: number; unit: string }> = {};
+
+    for (const item of orderItems) {
+      const recipe = db.recipes.find(r => r.cafe_id === cafeId && r.product_id === item.product_id);
+      if (recipe && recipe.items && recipe.items.length > 0) {
+        for (const recipeItem of recipe.items) {
+          const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === recipeItem.inventory_id);
+          if (inv) {
+            const needed = recipeItem.quantity_required * item.quantity;
+            if (!requiredRawMaterials[inv.id]) {
+              requiredRawMaterials[inv.id] = { name: inv.name, required: 0, unit: inv.unit };
+            }
+            requiredRawMaterials[inv.id].required += needed;
+          }
+        }
+      }
+    }
+
+    // Check aggregated requirements against current inventory
+    for (const [invId, req] of Object.entries(requiredRawMaterials)) {
+      const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === invId);
+      if (!inv || inv.current_quantity < req.required) {
+        const avail = inv ? inv.current_quantity : 0;
+        return {
+          available: false,
+          error: `Insufficient raw material stock: ${req.name}. Available: ${avail} ${req.unit}, Required for order: ${Number(req.required.toFixed(3))} ${req.unit}`,
+        };
+      }
+    }
+
+    return { available: true };
+  }
+
+  /**
    * Process stock deduction for all items in an order scoped to a specific cafe.
    */
   public static processOrderStockDeduction(cafeId: string, orderItems: OrderItem[], orderId: string, cashierName: string) {

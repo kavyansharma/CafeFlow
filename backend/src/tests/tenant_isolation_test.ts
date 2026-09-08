@@ -1,144 +1,328 @@
 const API_BASE = 'http://localhost:5000/api';
 
 async function runTests() {
-  console.log('--- STARTING CAFEFLOW MULTI-TENANT ISOLATION TESTS ---\n');
+  console.log('--- STARTING CAFEFLOW PRODUCTION READINESS & MULTI-TENANT AUDIT SUITE ---\n');
 
   let passed = 0;
   let failed = 0;
 
-  function assert(condition: boolean, testName: string) {
+  function assert(condition: boolean, testName: string, detail?: string) {
     if (condition) {
       console.log(`[PASS] ${testName}`);
       passed++;
     } else {
-      console.error(`[FAIL] ${testName}`);
+      console.error(`[FAIL] ${testName}${detail ? ` - ${detail}` : ''}`);
       failed++;
     }
   }
 
   try {
-    // 1. Login Sunrise Cafe Owner
-    console.log('1. Testing Sunrise Cafe & Bean Theory Logins...');
+    // ----------------------------------------------------
+    // SUITE 1: AUTHENTICATION & TOKEN VERIFICATION
+    // ----------------------------------------------------
+    console.log('1. [AUTH] Testing Authentication & Token Validation...');
+
+    // 1.1 Sunrise Owner Login
     const sunriseLoginRes = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'owner@sunrise.demo', password: 'demo123' }),
     });
-    const sunriseLogin = await sunriseLoginRes.json() as any;
+    const sunriseLogin = (await sunriseLoginRes.json()) as any;
     const sunriseToken = sunriseLogin.token;
     const sunriseCafe = sunriseLogin.cafe;
-    assert(sunriseToken && sunriseCafe?.id === 'cafe-sunrise-001', 'Sunrise Owner login returned correct cafe_id');
+    assert(sunriseLoginRes.status === 200 && sunriseToken && sunriseCafe?.id === 'cafe-sunrise-001', 'Sunrise Owner login returned 200 and cafe-sunrise-001');
 
-    // 2. Login Bean Theory Owner
+    // 1.2 Bean Theory Owner Login
     const beanLoginRes = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'owner@bean.demo', password: 'demo123' }),
     });
-    const beanLogin = await beanLoginRes.json() as any;
+    const beanLogin = (await beanLoginRes.json()) as any;
     const beanToken = beanLogin.token;
     const beanCafe = beanLogin.cafe;
-    assert(beanToken && beanCafe?.id === 'cafe-bean-002', 'Bean Theory Owner login returned correct cafe_id');
+    assert(beanLoginRes.status === 200 && beanToken && beanCafe?.id === 'cafe-bean-002', 'Bean Theory Owner login returned 200 and cafe-bean-002');
+
+    // 1.3 Sunrise Cashier Login
+    const cashierLoginRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'cashier@sunrise.demo', password: 'demo123' }),
+    });
+    const cashierLogin = (await cashierLoginRes.json()) as any;
+    const cashierToken = cashierLogin.token;
+    assert(cashierLoginRes.status === 200 && cashierLogin.user?.role === 'CASHIER', 'Sunrise Cashier login returned 200 with CASHIER role');
+
+    // 1.4 Invalid credentials rejection
+    const badLoginRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@sunrise.demo', password: 'wrongpassword' }),
+    });
+    assert(badLoginRes.status === 401, 'Invalid password rejected with 401 Unauthorized');
+
+    // 1.5 Missing Authorization Header rejection
+    const noAuthRes = await fetch(`${API_BASE}/products`);
+    assert(noAuthRes.status === 401, 'Unauthenticated request to /products rejected with 401');
+
+    // 1.6 Malformed / Expired JWT rejection
+    const fakeTokenRes = await fetch(`${API_BASE}/products`, {
+      headers: { Authorization: 'Bearer this.is.an.invalid.jwt.token' },
+    });
+    assert(fakeTokenRes.status === 401, 'Invalid JWT token rejected with 401 Unauthorized');
 
     const sunriseHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${sunriseToken}`,
+      Authorization: `Bearer ${sunriseToken}`,
     };
     const beanHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${beanToken}`,
+      Authorization: `Bearer ${beanToken}`,
+    };
+    const cashierHeaders = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cashierToken}`,
     };
 
-    // 3. Test Products Isolation
-    console.log('\n2. Testing Product Isolation...');
+    // ----------------------------------------------------
+    // SUITE 2: ROLE-BASED ACCESS CONTROL (RBAC)
+    // ----------------------------------------------------
+    console.log('\n2. [RBAC] Testing Role Permissions & Access Control...');
+
+    // 2.1 Owner can access staff list
+    const ownerStaffRes = await fetch(`${API_BASE}/staff`, { headers: sunriseHeaders });
+    assert(ownerStaffRes.status === 200, 'Owner successfully accesses /staff');
+
+    // 2.2 Cashier cannot access staff list (403 Forbidden)
+    const cashierStaffRes = await fetch(`${API_BASE}/staff`, { headers: cashierHeaders });
+    assert(cashierStaffRes.status === 403, 'Cashier is forbidden (403) from accessing /staff');
+
+    // 2.3 Cashier cannot update cafe settings (403 Forbidden)
+    const cashierSettingsRes = await fetch(`${API_BASE}/settings`, {
+      method: 'PUT',
+      headers: cashierHeaders,
+      body: JSON.stringify({ cafe_name: 'Hacked Name' }),
+    });
+    assert(cashierSettingsRes.status === 403, 'Cashier is forbidden (403) from updating /settings');
+
+    // 2.4 Cashier cannot create product (403 Forbidden)
+    const cashierCreateProdRes = await fetch(`${API_BASE}/products`, {
+      method: 'POST',
+      headers: cashierHeaders,
+      body: JSON.stringify({ name: 'Unauthorized Item', category_id: 'cat-coffee', selling_price: 100 }),
+    });
+    assert(cashierCreateProdRes.status === 403, 'Cashier is forbidden (403) from creating products');
+
+    // ----------------------------------------------------
+    // SUITE 3: INPUT VALIDATION & BUSINESS LOGIC
+    // ----------------------------------------------------
+    console.log('\n3. [VALIDATION] Testing Strict Input Validation...');
+
+    // 3.1 Reject negative / zero selling price
+    const negPriceRes = await fetch(`${API_BASE}/products`, {
+      method: 'POST',
+      headers: sunriseHeaders,
+      body: JSON.stringify({
+        name: 'Invalid Price Product',
+        category_id: 'cat-sunrise-1',
+        selling_price: -50,
+      }),
+    });
+    assert(negPriceRes.status === 400, 'Creating product with negative price rejected (400)');
+
+    // 3.2 Reject product with cross-tenant category
+    const crossCatRes = await fetch(`${API_BASE}/products`, {
+      method: 'POST',
+      headers: sunriseHeaders,
+      body: JSON.stringify({
+        name: 'Cross Cat Product',
+        category_id: 'cat-bean-1', // Belongs to Bean Theory!
+        selling_price: 150,
+      }),
+    });
+    assert(crossCatRes.status === 400, 'Creating product with foreign tenant category rejected (400)');
+
+    // 3.3 Reject order with negative / zero item quantity
     const sunriseProducts = ((await (await fetch(`${API_BASE}/products`, { headers: sunriseHeaders })).json()) as any).data;
+    const sunriseProdId = sunriseProducts[0].id;
+
+    const negOrderRes = await fetch(`${API_BASE}/orders`, {
+      method: 'POST',
+      headers: sunriseHeaders,
+      body: JSON.stringify({
+        items: [{ product_id: sunriseProdId, quantity: -2 }],
+        payment_method: 'CASH',
+      }),
+    });
+    assert(negOrderRes.status === 400, 'Placing order with negative quantity rejected (400)');
+
+    // 3.4 Reject order with excessive discount beyond cafe max limit
+    const overDiscountRes = await fetch(`${API_BASE}/orders`, {
+      method: 'POST',
+      headers: sunriseHeaders,
+      body: JSON.stringify({
+        items: [{ product_id: sunriseProdId, quantity: 1 }],
+        discount_type: 'PERCENTAGE',
+        discount_percentage: 85, // Sunrise limit is 50%
+        payment_method: 'CASH',
+      }),
+    });
+    assert(overDiscountRes.status === 400, 'Placing order exceeding max discount limit rejected (400)');
+
+    // ----------------------------------------------------
+    // SUITE 4: MULTI-TENANT ISOLATION (DATA ACCESS)
+    // ----------------------------------------------------
+    console.log('\n4. [ISOLATION] Testing Cross-Tenant Isolation...');
+
     const beanProducts = ((await (await fetch(`${API_BASE}/products`, { headers: beanHeaders })).json()) as any).data;
 
-    assert(sunriseProducts.length > 0 && beanProducts.length > 0, 'Both cafes have products');
-    assert(sunriseProducts.every((p: any) => p.cafe_id === 'cafe-sunrise-001'), 'All Sunrise products belong to Sunrise Cafe');
-    assert(beanProducts.every((p: any) => p.cafe_id === 'cafe-bean-002'), 'All Bean Theory products belong to Bean Theory');
+    // 4.1 Products Isolation
+    assert(sunriseProducts.every((p: any) => p.cafe_id === 'cafe-sunrise-001'), 'All Sunrise products have cafe_id cafe-sunrise-001');
+    assert(beanProducts.every((p: any) => p.cafe_id === 'cafe-bean-002'), 'All Bean Theory products have cafe_id cafe-bean-002');
 
-    // Check that Sunrise product is inaccessible by Bean Theory
-    const sunriseProdId = sunriseProducts[0].id;
-    const crossAccessRes = await fetch(`${API_BASE}/products/${sunriseProdId}`, { headers: beanHeaders });
-    assert(crossAccessRes.status === 404, 'Bean Theory received 404 for Sunrise Cafe product ID');
+    // 4.2 Cross-access product by ID returns 404
+    const crossProductRes = await fetch(`${API_BASE}/products/${sunriseProdId}`, { headers: beanHeaders });
+    assert(crossProductRes.status === 404, 'Bean Theory accessing Sunrise product ID returns 404 Not Found');
 
-    // 4. Test Inventory Isolation
-    console.log('\n3. Testing Inventory Isolation...');
+    // 4.3 Customers Isolation
+    const sunriseCust = ((await (await fetch(`${API_BASE}/customers`, { headers: sunriseHeaders })).json()) as any).data;
+    const beanCust = ((await (await fetch(`${API_BASE}/customers`, { headers: beanHeaders })).json()) as any).data;
+    assert(sunriseCust.every((c: any) => c.cafe_id === 'cafe-sunrise-001'), 'Sunrise customers belong exclusively to Sunrise');
+    assert(beanCust.every((c: any) => c.cafe_id === 'cafe-bean-002'), 'Bean Theory customers belong exclusively to Bean Theory');
+
+    if (sunriseCust.length > 0) {
+      const crossCustRes = await fetch(`${API_BASE}/customers/${sunriseCust[0].id}`, { headers: beanHeaders });
+      assert(crossCustRes.status === 404, 'Bean Theory accessing Sunrise customer ID returns 404 Not Found');
+    }
+
+    // 4.4 Orders Isolation & Cross-Tenant Order Placement Rejection
+    const crossOrderPlacement = await fetch(`${API_BASE}/orders`, {
+      method: 'POST',
+      headers: beanHeaders, // Bean Theory token trying to buy Sunrise product
+      body: JSON.stringify({
+        items: [{ product_id: sunriseProdId, quantity: 1 }],
+        payment_method: 'UPI',
+      }),
+    });
+    assert(crossOrderPlacement.status === 400, 'Bean Theory placing order with Sunrise product rejected (400)');
+
+    // ----------------------------------------------------
+    // SUITE 5: POS ATOMICITY, RECIPES & INVENTORY DEDUCTION
+    // ----------------------------------------------------
+    console.log('\n5. [INVENTORY & POS] Testing Stock Atomicity & Deduction...');
+
     const sunriseInv = ((await (await fetch(`${API_BASE}/inventory`, { headers: sunriseHeaders })).json()) as any).data;
     const beanInv = ((await (await fetch(`${API_BASE}/inventory`, { headers: beanHeaders })).json()) as any).data;
 
-    assert(sunriseInv.every((i: any) => i.cafe_id === 'cafe-sunrise-001'), 'All Sunrise inventory belongs to Sunrise');
-    assert(beanInv.every((i: any) => i.cafe_id === 'cafe-bean-002'), 'All Bean Theory inventory belongs to Bean Theory');
-
-    // 5. Test Stock Deduction Isolation on Order
-    console.log('\n4. Testing POS Order & Inventory Isolation...');
     const coffeeBeansSunrise = sunriseInv.find((i: any) => i.name.toLowerCase().includes('beans'));
     const initialSunriseQty = coffeeBeansSunrise ? coffeeBeansSunrise.current_quantity : 0;
 
-    // Place an order in Sunrise Cafe
-    const orderRes = await (await fetch(`${API_BASE}/orders`, {
+    // 5.1 Place valid order in Sunrise Cafe
+    const validOrderRes = await fetch(`${API_BASE}/orders`, {
       method: 'POST',
       headers: sunriseHeaders,
       body: JSON.stringify({
         items: [{ product_id: sunriseProdId, quantity: 2 }],
         payment_method: 'UPI',
       }),
-    })).json() as any;
+    });
+    const validOrder = (await validOrderRes.json()) as any;
+    assert(validOrderRes.status === 201 && validOrder.success && validOrder.order.cafe_id === 'cafe-sunrise-001', 'Order placed successfully with cafe_id cafe-sunrise-001');
 
-    assert(orderRes.success && orderRes.order.cafe_id === 'cafe-sunrise-001', 'Order placed successfully in Sunrise Cafe');
-
-    // Check Sunrise inventory was deducted
+    // 5.2 Stock deducted accurately for Sunrise
     const updatedSunriseInv = ((await (await fetch(`${API_BASE}/inventory`, { headers: sunriseHeaders })).json()) as any).data;
     const updatedCoffeeBeansSunrise = updatedSunriseInv.find((i: any) => i.id === coffeeBeansSunrise?.id);
     assert(updatedCoffeeBeansSunrise && updatedCoffeeBeansSunrise.current_quantity < initialSunriseQty, 'Sunrise inventory quantity deducted after Sunrise order');
 
-    // Check Bean Theory inventory remained unaffected
+    // 5.3 Bean Theory inventory completely untouched
     const updatedBeanInv = ((await (await fetch(`${API_BASE}/inventory`, { headers: beanHeaders })).json()) as any).data;
     const beanBeans = updatedBeanInv.find((i: any) => i.name.toLowerCase().includes('beans'));
     const originalBeanBeans = beanInv.find((i: any) => i.name.toLowerCase().includes('beans'));
-    assert(beanBeans && beanBeans.current_quantity === originalBeanBeans?.current_quantity, 'Bean Theory inventory remained UNCHANGED');
+    assert(beanBeans && beanBeans.current_quantity === originalBeanBeans?.current_quantity, 'Bean Theory raw inventory remained completely unaffected');
 
-    // 6. Test Shift Isolation
-    console.log('\n5. Testing Shift Isolation...');
+    // ----------------------------------------------------
+    // SUITE 6: INDEPENDENT INVOICE SEQUENCING
+    // ----------------------------------------------------
+    console.log('\n6. [INVOICING] Testing Independent Tenant Invoice Sequences...');
+
+    // 6.1 Sunrise invoice generated
+    const sunriseInvoices = ((await (await fetch(`${API_BASE}/invoices`, { headers: sunriseHeaders })).json()) as any).data;
+    assert(sunriseInvoices.length > 0 && sunriseInvoices[0].invoice_number.startsWith('SC-2026-'), 'Sunrise invoice has correct prefix SC-2026-');
+
+    // 6.2 Place Bean Theory order and check its invoice
+    const beanProdId = beanProducts[0].id;
+    const beanOrderRes = await fetch(`${API_BASE}/orders`, {
+      method: 'POST',
+      headers: beanHeaders,
+      body: JSON.stringify({
+        items: [{ product_id: beanProdId, quantity: 1 }],
+        payment_method: 'CASH',
+      }),
+    });
+    const beanOrder = (await beanOrderRes.json()) as any;
+    assert(beanOrderRes.status === 201 && beanOrder.success, 'Bean Theory order placed successfully');
+
+    const beanInvoices = ((await (await fetch(`${API_BASE}/invoices`, { headers: beanHeaders })).json()) as any).data;
+    assert(beanInvoices.length > 0 && beanInvoices[0].invoice_number.startsWith('BT-2026-'), 'Bean Theory invoice has correct prefix BT-2026-');
+    assert(beanInvoices.every((inv: any) => inv.cafe_id === 'cafe-bean-002'), 'Bean Theory invoices contain only Bean Theory records');
+
+    // ----------------------------------------------------
+    // SUITE 7: SHIFTS & AUDIT LOGS ISOLATION
+    // ----------------------------------------------------
+    console.log('\n7. [SHIFTS & AUDIT] Testing Shift & Audit Isolation...');
+
     const sunriseShift = ((await (await fetch(`${API_BASE}/shifts/current`, { headers: sunriseHeaders })).json()) as any).data;
     const beanShift = ((await (await fetch(`${API_BASE}/shifts/current`, { headers: beanHeaders })).json()) as any).data;
-    assert(sunriseShift?.cafe_id === 'cafe-sunrise-001', 'Sunrise active shift belongs to Sunrise');
+    assert(sunriseShift?.cafe_id === 'cafe-sunrise-001', 'Sunrise active shift belongs to Sunrise Cafe');
     assert(beanShift?.cafe_id === 'cafe-bean-002', 'Bean Theory active shift belongs to Bean Theory');
 
-    // 7. Test Cafe Self-Registration Flow
-    console.log('\n6. Testing Cafe Self-Registration Flow...');
-    const newCafeRes = await (await fetch(`${API_BASE}/auth/register-cafe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cafe_name: 'Moonlight Espresso Lounge',
-        owner_name: 'Diana Prince',
-        email: `diana_${Date.now()}@moonlight.demo`,
-        password: 'password123',
-        phone: '+91 91234 56789',
-        address: '74 MG Road, Indiranagar, Bengaluru',
-        gstin: '29ABCDE1234F1Z5',
-        currency: '₹',
-        invoice_prefix: 'ML-2026-',
-        business_type: 'Cafe & Bakery',
-        seating_capacity: 40,
-      }),
-    })).json() as any;
+    const sunriseAudit = ((await (await fetch(`${API_BASE}/staff/audit-logs`, { headers: sunriseHeaders })).json()) as any).data;
+    const beanAudit = ((await (await fetch(`${API_BASE}/staff/audit-logs`, { headers: beanHeaders })).json()) as any).data;
+    assert(sunriseAudit.every((a: any) => a.cafe_id === 'cafe-sunrise-001'), 'Sunrise audit trail belongs exclusively to Sunrise');
+    assert(beanAudit.every((a: any) => a.cafe_id === 'cafe-bean-002'), 'Bean Theory audit trail belongs exclusively to Bean Theory');
 
-    assert(newCafeRes.success && newCafeRes.cafe.name === 'Moonlight Espresso Lounge', 'New cafe registered successfully');
+    // ----------------------------------------------------
+    // SUITE 8: CAFE SELF-REGISTRATION FLOW
+    // ----------------------------------------------------
+    console.log('\n8. [REGISTRATION] Testing New Cafe Self-Registration Flow...');
+
+    const newCafeRes = (await (
+      await fetch(`${API_BASE}/auth/register-cafe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cafe_name: 'Moonlight Artisan Roastery',
+          owner_name: 'Diana Prince',
+          email: `diana_${Date.now()}@moonlight.demo`,
+          password: 'password123',
+          phone: '+91 91234 56789',
+          address: '74 MG Road, Indiranagar, Bengaluru',
+          gstin: '29ABCDE1234F1Z5',
+          currency: '₹',
+          invoice_prefix: 'ML-2026-',
+          business_type: 'Cafe & Bakery',
+          seating_capacity: 40,
+        }),
+      })
+    ).json()) as any;
+
+    assert(newCafeRes.success && newCafeRes.cafe?.name === 'Moonlight Artisan Roastery', 'New cafe registered successfully');
     assert(newCafeRes.token, 'Registration issued a JWT token for the new owner');
 
     const newCafeHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${newCafeRes.token}`,
+      Authorization: `Bearer ${newCafeRes.token}`,
     };
     const newCafeProducts = ((await (await fetch(`${API_BASE}/products`, { headers: newCafeHeaders })).json()) as any).data;
-    assert(newCafeProducts.length > 0 && newCafeProducts.every((p: any) => p.cafe_id === newCafeRes.cafe.id), 'New cafe auto-populated with its own starter menu and zero leakage');
+    assert(newCafeProducts.length > 0 && newCafeProducts.every((p: any) => p.cafe_id === newCafeRes.cafe.id), 'New cafe auto-populated with starter menu and zero leakage');
 
-    console.log(`\n========================================`);
-    console.log(`TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
-    console.log(`========================================\n`);
+    // ----------------------------------------------------
+    // SUMMARY
+    // ----------------------------------------------------
+    console.log(`\n======================================================`);
+    console.log(`COMPREHENSIVE AUDIT SUMMARY: ${passed} PASSED, ${failed} FAILED`);
+    console.log(`======================================================\n`);
 
     if (failed > 0) {
       process.exit(1);

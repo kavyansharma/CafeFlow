@@ -27,11 +27,20 @@ export const createStaff = (req: AuthRequest, res: Response) => {
   const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { name, email, phone, role = 'CASHIER', password = 'password123' } = req.body;
 
-  if (!name || !email) {
-    return res.status(400).json({ success: false, message: 'Name and email are required' });
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid staff name is required' });
   }
 
-  const existing = db.users.find(u => u.cafe_id === cafeId && u.email.toLowerCase() === email.toLowerCase());
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ success: false, message: 'Valid email address is required' });
+  }
+
+  const validRoles = ['OWNER', 'MANAGER', 'CASHIER'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ success: false, message: `Invalid role. Allowed roles: ${validRoles.join(', ')}` });
+  }
+
+  const existing = db.users.find(u => u.cafe_id === cafeId && u.email.toLowerCase() === email.trim().toLowerCase());
   if (existing) {
     return res.status(409).json({ success: false, message: 'A staff member with this email already exists in this cafe' });
   }
@@ -39,9 +48,9 @@ export const createStaff = (req: AuthRequest, res: Response) => {
   const newStaff = {
     id: `usr-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
-    name,
-    email,
-    phone: phone || '',
+    name: name.trim(),
+    email: email.trim().toLowerCase(),
+    phone: phone ? String(phone).trim() : '',
     password_hash: hashPassword(password),
     role: role as 'OWNER' | 'MANAGER' | 'CASHIER',
     is_active: true,
@@ -77,11 +86,20 @@ export const updateStaff = (req: AuthRequest, res: Response) => {
     return res.status(404).json({ success: false, message: 'Staff member not found in this cafe' });
   }
 
-  if (name) user.name = name;
-  if (phone) user.phone = phone;
-  if (role) user.role = role;
+  if (role) {
+    const validRoles = ['OWNER', 'MANAGER', 'CASHIER'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: `Invalid role. Allowed roles: ${validRoles.join(', ')}` });
+    }
+    user.role = role;
+  }
+
+  if (name && typeof name === 'string') user.name = name.trim();
+  if (phone !== undefined) user.phone = String(phone).trim();
   if (is_active !== undefined) user.is_active = Boolean(is_active);
-  if (password) user.password_hash = hashPassword(password);
+  if (password && typeof password === 'string' && password.length >= 6) {
+    user.password_hash = hashPassword(password);
+  }
 
   db.logAudit(cafeId, req.user?.name || 'Owner', 'OWNER', 'Staff Updated', `Updated staff account for ${user.name}`);
 

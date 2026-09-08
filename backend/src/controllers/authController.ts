@@ -242,17 +242,29 @@ export const getCurrentUser = (req: AuthRequest, res: Response) => {
 };
 
 export const switchDemoUser = (req: Request, res: Response) => {
-  const { role, cafe_slug = 'sunrise-cafe' } = req.body;
+  const { role, cafe_slug, cafeSlug } = req.body;
+  const targetSlug = cafe_slug || cafeSlug || 'sunrise-cafe';
 
-  let cafe = db.cafes.find(c => c.slug === cafe_slug);
-  if (!cafe) {
-    cafe = db.cafes[0];
+  const validRoles: Array<'OWNER' | 'MANAGER' | 'CASHIER'> = ['OWNER', 'MANAGER', 'CASHIER'];
+  if (!role || !validRoles.includes(role)) {
+    return res.status(400).json({ success: false, message: 'Invalid role. Must be OWNER, MANAGER, or CASHIER.' });
   }
 
-  const user = db.users.find(u => u.cafe_id === cafe?.id && u.role === role && u.is_active);
+  // Only allow demo switching for pre-seeded demo cafes
+  const allowedDemoSlugs = ['sunrise-cafe', 'bean-theory'];
+  if (!allowedDemoSlugs.includes(targetSlug)) {
+    return res.status(403).json({ success: false, message: 'Demo switching is restricted to authorized demo cafes.' });
+  }
 
-  if (!user || !cafe) {
-    return res.status(404).json({ success: false, message: `No active demo user found for role ${role} in ${cafe_slug}` });
+  const cafe = db.cafes.find(c => c.slug === targetSlug);
+  if (!cafe) {
+    return res.status(404).json({ success: false, message: `Demo cafe '${targetSlug}' not found.` });
+  }
+
+  const user = db.users.find(u => u.cafe_id === cafe.id && u.role === role && u.is_active);
+
+  if (!user) {
+    return res.status(404).json({ success: false, message: `No active demo user found for role ${role} in ${cafe.name}` });
   }
 
   const token = jwt.sign(

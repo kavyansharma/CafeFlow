@@ -71,11 +71,17 @@ export const createCustomer = (req: AuthRequest, res: Response) => {
   const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
   const { name, phone, email, notes } = req.body;
 
-  if (!name || !phone) {
-    return res.status(400).json({ success: false, message: 'Customer name and phone number are required' });
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid customer name is required' });
   }
 
-  const existing = db.customers.find(c => c.cafe_id === cafeId && c.phone === phone);
+  if (!phone || typeof phone !== 'string' || !phone.trim() || phone.trim().length < 5) {
+    return res.status(400).json({ success: false, message: 'Valid customer phone number is required (at least 5 digits)' });
+  }
+
+  const cleanPhone = phone.trim();
+
+  const existing = db.customers.find(c => c.cafe_id === cafeId && c.phone === cleanPhone);
   if (existing) {
     return res.status(409).json({ success: false, message: 'A customer with this phone number already exists in this cafe', data: existing });
   }
@@ -83,14 +89,14 @@ export const createCustomer = (req: AuthRequest, res: Response) => {
   const newCustomer = {
     id: `cust-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
-    name,
-    phone,
-    email: email || undefined,
+    name: name.trim(),
+    phone: cleanPhone,
+    email: email ? String(email).trim() : undefined,
     loyalty_points: 0,
     total_orders: 0,
     total_spent: 0,
     last_visit: undefined,
-    notes: notes || undefined,
+    notes: notes ? String(notes).trim() : undefined,
     created_at: new Date().toISOString(),
   };
 
@@ -107,6 +113,13 @@ export const updateCustomer = (req: AuthRequest, res: Response) => {
 
   if (index === -1) {
     return res.status(404).json({ success: false, message: 'Customer not found in this cafe' });
+  }
+
+  if (req.body.loyalty_points !== undefined) {
+    const pts = Number(req.body.loyalty_points);
+    if (isNaN(pts) || pts < 0) {
+      return res.status(400).json({ success: false, message: 'Loyalty points cannot be negative' });
+    }
   }
 
   const existing = db.customers[index];

@@ -27,6 +27,21 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     return res.status(400).json({ success: false, message: 'Cart items cannot be empty' });
   }
 
+  // Validate quantities and item presence
+  for (const item of items) {
+    if (!item.product_id) {
+      return res.status(400).json({ success: false, message: 'Every cart item must have a valid product_id' });
+    }
+    const qty = Number(item.quantity);
+    if (!qty || isNaN(qty) || qty <= 0 || !Number.isInteger(qty)) {
+      return res.status(400).json({ success: false, message: `Invalid item quantity (${item.quantity}). Quantity must be a positive integer.` });
+    }
+    const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id);
+    if (!product) {
+      return res.status(400).json({ success: false, message: `Product ${item.product_id} not found in this cafe` });
+    }
+  }
+
   const cashierId = req.user?.id || 'usr-cashier-003';
   const cashierName = req.user?.name || 'Rahul Sen';
   const cafeSettings = db.getCafeSettings(cafeId);
@@ -36,11 +51,11 @@ export const createOrder = (req: AuthRequest, res: Response) => {
   let totalGst = 0;
 
   const processedItems: OrderItem[] = items.map((item: any) => {
-    const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id);
-    const unitPrice = product ? product.selling_price : Number(item.unit_price || 0);
-    const costPrice = product ? product.cost_price : 0;
-    const gstRate = product ? product.gst_rate : 5;
-    const qty = Number(item.quantity || 1);
+    const product = db.products.find(p => p.cafe_id === cafeId && p.id === item.product_id)!;
+    const unitPrice = product.selling_price;
+    const costPrice = product.cost_price;
+    const gstRate = product.gst_rate;
+    const qty = Number(item.quantity);
 
     const itemSubtotal = unitPrice * qty;
     const itemGst = Number(((itemSubtotal * gstRate) / 100).toFixed(2));
@@ -50,8 +65,8 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 
     return {
       product_id: item.product_id,
-      product_name: product ? product.name : item.product_name,
-      category_name: db.categories.find(c => c.cafe_id === cafeId && c.id === product?.category_id)?.name || 'General',
+      product_name: product.name,
+      category_name: db.categories.find(c => c.cafe_id === cafeId && c.id === product.category_id)?.name || 'General',
       quantity: qty,
       unit_price: unitPrice,
       cost_price: costPrice,
@@ -62,28 +77,72 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     };
   });
 
-  // 2. Handle discounts & loyalty redemption
-  let calculatedDiscount = Number(discount_amount || 0);
-  if (discount_type === 'PERCENTAGE' && discount_percentage > 0) {
-    calculatedDiscount = Number(((subtotal * discount_percentage) / 100).toFixed(2));
+  // 2. Pre-validate stock availability before modifying database
+  const stockCheck = InventoryService.validateOrderStockAvailability(cafeId, processedItems);
+  if (!stockCheck.available) {
+    return res.status(400).json({ success: false, message: stockCheck.error || 'Insufficient stock for this order.' });
+  }
+
+  // 3. Handle discounts & loyalty redemption with strict bounds
+  let calculatedDiscount = 0;
+  if (discount_type === 'PERCENTAGE') {
+    const pct = Number(discount_percentage);
+    if (isNaN(pct) || pct < 0 || pct > cafeSettings.max_discount_percent) {
+      return res.status(400).json({
+        success: false,
+        message: `Discount percentage must be between 0% and ${cafeSettings.max_discount_percent}%.`,
+      });
+    }
+    calculatedDiscount = Number(((subtotal * pct) / 100).toFixed(2));
+  } else if (discount_type === 'FIXED') {
+    const fixedAmt = Number(discount_amount);
+    if (isNaN(fixedAmt) || fixedAmt < 0 || fixedAmt > subtotal) {
+      return res.status(400).json({
+        success: false,
+        message: 'Fixed discount amount cannot be negative or exceed the cart subtotal.',
+      });
+    }
+    calculatedDiscount = fixedAmt;
   }
 
   let loyaltyDiscount = 0;
   let pointsRedeemed = Number(points_to_redeem || 0);
+  if (pointsRedeemed < 0) {
+    return res.status(400).json({ success: false, message: 'Loyalty points to redeem cannot be negative.' });
+  }
+
   if (pointsRedeemed > 0) {
+    if (customer_id) {
+      const customer = db.customers.find(c => c.cafe_id === cafeId && c.id === customer_id);
+      if (!customer || customer.loyalty_points < pointsRedeemed) {
+        return res.status(400).json({
+          success: false,
+          message: `Customer only has ${customer?.loyalty_points || 0} loyalty points available.`,
+        });
+      }
+    }
     loyaltyDiscount = Number((pointsRedeemed * cafeSettings.loyalty_point_value).toFixed(2));
   }
 
-  const totalDiscount = Number((calculatedDiscount + loyaltyDiscount).toFixed(2));
+  const totalDiscount = Number(Math.min(subtotal + totalGst, calculatedDiscount + loyaltyDiscount).toFixed(2));
   const totalAmount = Math.max(0, Number((subtotal + totalGst - totalDiscount).toFixed(2)));
 
-  // Calculate change for Cash
-  const tendered = Number(amount_received || totalAmount);
+  // Validate Tender
+  const tendered = amount_received !== undefined && amount_received !== null && Number(amount_received) > 0
+    ? Number(amount_received)
+    : totalAmount;
+
+  if (isNaN(tendered) || tendered < 0) {
+    return res.status(400).json({ success: false, message: 'Amount received cannot be negative.' });
+  }
+  if (payment_method === 'CASH' && tendered < totalAmount) {
+    return res.status(400).json({ success: false, message: `Cash tendered (₹${tendered}) is less than total bill amount (₹${totalAmount}).` });
+  }
+
   const changeReturned = payment_method === 'CASH' ? Math.max(0, Number((tendered - totalAmount).toFixed(2))) : 0;
 
-  // Invoice Number
-  const invoicePrefix = cafeSettings.invoice_prefix || 'CF-2026-';
-  const invoiceNumber = `${invoicePrefix}${invoiceSequence++}`;
+  // Tenant-specific invoice number
+  const invoiceNumber = db.getNextInvoiceNumber(cafeId);
 
   // Points earned calculation (e.g. ₹100 = 1 point)
   const pointsEarned = Math.floor(totalAmount / (cafeSettings.loyalty_spend_per_point || 100));

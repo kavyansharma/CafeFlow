@@ -1,12 +1,16 @@
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
-import { hashPassword, CAFE_SUNRISE_ID } from '../database/seedData';
+import { hashPassword } from '../database/seedData';
 import { AuthRequest } from '../middleware/auth';
 
 export const getStaff = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const staffList = db.users
     .filter(u => u.cafe_id === cafeId)
     .map(u => ({
@@ -24,7 +28,11 @@ export const getStaff = (req: Request, res: Response) => {
 };
 
 export const createStaff = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { name, email, phone, role = 'CASHIER', password = 'password123' } = req.body;
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -77,13 +85,33 @@ export const createStaff = (req: AuthRequest, res: Response) => {
 };
 
 export const updateStaff = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
-  const { name, phone, role, is_active, password } = req.body;
+  const { name, phone, role, is_active, password, email } = req.body;
 
   const user = db.users.find(u => u.cafe_id === cafeId && u.id === id);
   if (!user) {
     return res.status(404).json({ success: false, message: 'Staff member not found in this cafe' });
+  }
+
+  // Prevent deactivating or demoting the last active owner
+  if (user.role === 'OWNER' && (role && role !== 'OWNER' || is_active === false)) {
+    const activeOwners = db.users.filter(u => u.cafe_id === cafeId && u.role === 'OWNER' && u.is_active && u.id !== id);
+    if (activeOwners.length === 0) {
+      return res.status(400).json({ success: false, message: 'Cannot deactivate or demote the only active Owner of this cafe.' });
+    }
+  }
+
+  if (email && email.trim().toLowerCase() !== user.email.toLowerCase()) {
+    const emailConflict = db.users.find(u => u.cafe_id === cafeId && u.id !== id && u.email.toLowerCase() === email.trim().toLowerCase());
+    if (emailConflict) {
+      return res.status(409).json({ success: false, message: 'Another user in this cafe already has this email address' });
+    }
+    user.email = email.trim().toLowerCase();
   }
 
   if (role) {
@@ -94,7 +122,7 @@ export const updateStaff = (req: AuthRequest, res: Response) => {
     user.role = role;
   }
 
-  if (name && typeof name === 'string') user.name = name.trim();
+  if (name && typeof name === 'string' && name.trim()) user.name = name.trim();
   if (phone !== undefined) user.phone = String(phone).trim();
   if (is_active !== undefined) user.is_active = Boolean(is_active);
   if (password && typeof password === 'string' && password.length >= 6) {
@@ -120,7 +148,12 @@ export const updateStaff = (req: AuthRequest, res: Response) => {
 
 export const getAuditLogs = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const logs = db.auditLogs.filter(a => a.cafe_id === cafeId);
   return res.json({ success: true, count: logs.length, data: logs });
 };
+

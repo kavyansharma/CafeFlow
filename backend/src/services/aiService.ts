@@ -55,13 +55,14 @@ export class AIService {
 
     if (orders.length === 0) {
       return {
-        predictedRevenueTomorrow: { min: 20000, max: 28000, likely: 24000 },
-        predictedOrdersTomorrow: { min: 30, max: 45 },
-        confidenceScore: 82,
-        growthFactor: 5.0,
-        dayOfWeekPattern: 'Initial baseline projection for newly onboarded cafe',
+        predictedRevenueTomorrow: { min: 0, max: 0, likely: 0 },
+        predictedOrdersTomorrow: { min: 0, max: 0 },
+        confidenceScore: 75.0,
+        growthFactor: 0,
+        dayOfWeekPattern: 'Initial forecast will calibrate as orders are recorded.',
       };
     }
+
 
     // Group sales by day for this cafe
     const dailySales: Record<string, { revenue: number; orders: number }> = {};

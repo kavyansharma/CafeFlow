@@ -2,11 +2,14 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getProducts = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { category_id, search, available_only } = req.query;
   
   let products = db.products
@@ -39,7 +42,11 @@ export const getProducts = (req: Request, res: Response) => {
 
 export const getProductById = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const product = db.products.find(p => p.cafe_id === cafeId && p.id === id);
   if (!product) {
@@ -59,7 +66,11 @@ export const getProductById = (req: Request, res: Response) => {
 };
 
 export const createProduct = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const {
     name,
     category_id,
@@ -114,7 +125,12 @@ export const createProduct = (req: AuthRequest, res: Response) => {
     return res.status(400).json({ success: false, message: 'Minimum stock level cannot be negative' });
   }
 
-  const generatedSku = sku || `CF-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const generatedSku = sku ? String(sku).trim() : `CF-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+
+  // Ensure SKU uniqueness within this cafe
+  if (db.products.some(p => p.cafe_id === cafeId && p.sku.toLowerCase() === generatedSku.toLowerCase())) {
+    return res.status(409).json({ success: false, message: 'A product with this SKU already exists in this cafe' });
+  }
 
   const newProduct = {
     id: `prod-${uuidv4().substring(0, 8)}`,
@@ -122,7 +138,7 @@ export const createProduct = (req: AuthRequest, res: Response) => {
     name: name.trim(),
     category_id,
     sku: generatedSku,
-    description: description || '',
+    description: description ? String(description).trim() : '',
     selling_price: numSellingPrice,
     cost_price: numCostPrice,
     gst_rate: numGstRate,
@@ -143,7 +159,11 @@ export const createProduct = (req: AuthRequest, res: Response) => {
 };
 
 export const updateProduct = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const productIndex = db.products.findIndex(p => p.cafe_id === cafeId && p.id === id);
 
@@ -157,6 +177,13 @@ export const updateProduct = (req: AuthRequest, res: Response) => {
     const categoryExists = db.categories.some(c => c.cafe_id === cafeId && c.id === req.body.category_id);
     if (!categoryExists) {
       return res.status(400).json({ success: false, message: 'Category not found in this cafe' });
+    }
+  }
+
+  if (req.body.sku && req.body.sku !== existing.sku) {
+    const skuExists = db.products.some(p => p.cafe_id === cafeId && p.id !== id && p.sku.toLowerCase() === String(req.body.sku).trim().toLowerCase());
+    if (skuExists) {
+      return res.status(409).json({ success: false, message: 'A product with this SKU already exists in this cafe' });
     }
   }
 
@@ -214,7 +241,11 @@ export const updateProduct = (req: AuthRequest, res: Response) => {
 };
 
 export const deleteProduct = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const productIndex = db.products.findIndex(p => p.cafe_id === cafeId && p.id === id);
 
@@ -230,7 +261,11 @@ export const deleteProduct = (req: AuthRequest, res: Response) => {
 
 export const getCategories = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const tenantCategories = db.categories.filter(c => c.cafe_id === cafeId);
   
   const categoriesWithCounts = tenantCategories.map(c => {
@@ -245,7 +280,11 @@ export const getCategories = (req: Request, res: Response) => {
 };
 
 export const createCategory = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { name, description, icon } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Category name is required' });
@@ -264,8 +303,8 @@ export const createCategory = (req: AuthRequest, res: Response) => {
     cafe_id: cafeId,
     name: trimmedName,
     slug,
-    description: description || '',
-    icon: icon || 'Coffee',
+    description: description ? String(description).trim() : '',
+    icon: icon ? String(icon).trim() : 'Coffee',
     sort_order: db.categories.filter(c => c.cafe_id === cafeId).length + 1,
     is_active: true,
   };
@@ -274,3 +313,4 @@ export const createCategory = (req: AuthRequest, res: Response) => {
   db.logAudit(cafeId, req.user?.name || 'Staff', req.user?.role || 'STAFF', 'Create Category', `Created category ${newCat.name}`);
   return res.status(201).json({ success: true, message: 'Category created', data: newCat });
 };
+

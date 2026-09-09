@@ -3,11 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
 import { InventoryService } from '../services/inventoryService';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getInventory = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { category, search, low_stock_only } = req.query;
 
   let items = db.inventory.filter(i => i.cafe_id === cafeId);
@@ -46,8 +49,12 @@ export const getInventory = (req: Request, res: Response) => {
 };
 
 export const createInventoryItem = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
-  const { name, category, current_quantity, unit, min_quantity, cost_per_unit, supplier } = req.body;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const { name, category, current_quantity, unit, min_quantity, cost_per_unit, supplier, sku } = req.body;
 
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Valid item name is required' });
@@ -72,13 +79,17 @@ export const createInventoryItem = (req: AuthRequest, res: Response) => {
     return res.status(400).json({ success: false, message: 'Cost per unit cannot be negative' });
   }
 
-  const sku = `RAW-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const itemSku = sku ? String(sku).trim() : `RAW-${name.trim().substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+
+  if (db.inventory.some(i => i.cafe_id === cafeId && i.sku.toLowerCase() === itemSku.toLowerCase())) {
+    return res.status(409).json({ success: false, message: 'An inventory item with this SKU already exists in this cafe' });
+  }
 
   const newItem = {
     id: `inv-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
     name: name.trim(),
-    sku,
+    sku: itemSku,
     category: category ? String(category).trim() : 'General',
     current_quantity: numQty,
     unit: unit.trim(),
@@ -113,7 +124,11 @@ export const createInventoryItem = (req: AuthRequest, res: Response) => {
 };
 
 export const updateInventoryItem = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const index = db.inventory.findIndex(i => i.cafe_id === cafeId && i.id === id);
 
@@ -142,6 +157,13 @@ export const updateInventoryItem = (req: AuthRequest, res: Response) => {
     }
   }
 
+  if (req.body.sku) {
+    const skuExists = db.inventory.some(i => i.cafe_id === cafeId && i.id !== id && i.sku.toLowerCase() === String(req.body.sku).trim().toLowerCase());
+    if (skuExists) {
+      return res.status(409).json({ success: false, message: 'An inventory item with this SKU already exists in this cafe' });
+    }
+  }
+
   const existing = db.inventory[index];
   const updated = {
     ...existing,
@@ -160,14 +182,18 @@ export const updateInventoryItem = (req: AuthRequest, res: Response) => {
 };
 
 export const adjustStock = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { inventory_id, quantity_change, movement_type, reason } = req.body;
 
   if (!inventory_id || quantity_change === undefined || !movement_type) {
     return res.status(400).json({ success: false, message: 'Inventory ID, quantity change, and movement type are required' });
   }
 
-  const validMovements = ['PURCHASE', 'USAGE', 'WASTAGE', 'AUDIT_CORRECTION', 'RETURN'];
+  const validMovements = ['PURCHASE', 'USAGE', 'WASTAGE', 'ADJUSTMENT', 'AUDIT_CORRECTION', 'RETURN'];
   if (!validMovements.includes(movement_type)) {
     return res.status(400).json({ success: false, message: `Invalid movement type. Allowed: ${validMovements.join(', ')}` });
   }
@@ -178,12 +204,16 @@ export const adjustStock = (req: AuthRequest, res: Response) => {
   }
 
   try {
+    const normalizedType: 'PURCHASE' | 'ADJUSTMENT' | 'WASTAGE' = 
+      movement_type === 'PURCHASE' ? 'PURCHASE' : 
+      movement_type === 'WASTAGE' ? 'WASTAGE' : 'ADJUSTMENT';
+
     const result = InventoryService.adjustStock(
       cafeId,
       inventory_id,
       delta,
-      movement_type,
-      reason,
+      normalizedType,
+      reason || 'Manual Adjustment',
       req.user?.name || 'Staff'
     );
     return res.json({ success: true, message: 'Stock adjusted successfully', data: result });
@@ -194,7 +224,11 @@ export const adjustStock = (req: AuthRequest, res: Response) => {
 
 export const getMovements = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { inventory_id, type } = req.query;
   let movements = db.inventoryMovements.filter(m => m.cafe_id === cafeId);
 
@@ -208,3 +242,4 @@ export const getMovements = (req: Request, res: Response) => {
 
   return res.json({ success: true, count: movements.length, data: movements.slice(0, 100) });
 };
+

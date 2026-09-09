@@ -151,6 +151,7 @@ export const App: React.FC = () => {
                         </ProtectedRoute>
                       }
                     />
+                    <Route path="reports" element={<Navigate to="/sales" replace />} />
 
                     {/* Advanced Analytics */}
                     <Route

@@ -1,17 +1,25 @@
-const API_BASE = 'http://localhost:5000/api';
+import http from 'http';
+import app from '../server';
 
 async function runTests() {
-  console.log('--- STARTING CAFEFLOW PRODUCTION READINESS & MULTI-TENANT AUDIT SUITE ---\n');
+  console.log('================================================================');
+  console.log('☕ CAFEFLOW PRODUCTION READINESS & MULTI-TENANT SECURITY SUITE');
+  console.log('================================================================\n');
+
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as any).port;
+  const API_BASE = `http://127.0.0.1:${port}/api`;
 
   let passed = 0;
   let failed = 0;
 
   function assert(condition: boolean, testName: string, detail?: string) {
     if (condition) {
-      console.log(`[PASS] ${testName}`);
+      console.log(`  [PASS] ${testName}`);
       passed++;
     } else {
-      console.error(`[FAIL] ${testName}${detail ? ` - ${detail}` : ''}`);
+      console.error(`  [FAIL] ${testName}${detail ? ` - ${detail}` : ''}`);
       failed++;
     }
   }
@@ -114,30 +122,48 @@ async function runTests() {
     });
     assert(cashierCreateProdRes.status === 403, 'Cashier is forbidden (403) from creating products');
 
+    // 2.5 Cashier cannot manually alter customer loyalty points
+    const custRes = await fetch(`${API_BASE}/customers`, { headers: sunriseHeaders });
+    const sunriseCustomers = ((await custRes.json()) as any).data;
+    const targetCustId = sunriseCustomers[0].id;
+
+    const cashierModifyPointsRes = await fetch(`${API_BASE}/customers/${targetCustId}`, {
+      method: 'PUT',
+      headers: cashierHeaders,
+      body: JSON.stringify({ loyalty_points: 99999 }),
+    });
+    assert(cashierModifyPointsRes.status === 403, 'Cashier is forbidden (403) from manually setting loyalty points');
+
     // ----------------------------------------------------
-    // SUITE 3: INPUT VALIDATION & BUSINESS LOGIC
+    // SUITE 3: INPUT VALIDATION & BUSINESS BOUNDS
     // ----------------------------------------------------
     console.log('\n3. [VALIDATION] Testing Strict Input Validation...');
 
     // 3.1 Reject negative / zero selling price
+    const sunriseCategories = ((await (await fetch(`${API_BASE}/categories`, { headers: sunriseHeaders })).json()) as any).data;
+    const validSunriseCatId = sunriseCategories[0].id;
+
     const negPriceRes = await fetch(`${API_BASE}/products`, {
       method: 'POST',
       headers: sunriseHeaders,
       body: JSON.stringify({
         name: 'Invalid Price Product',
-        category_id: 'cat-sunrise-1',
+        category_id: validSunriseCatId,
         selling_price: -50,
       }),
     });
     assert(negPriceRes.status === 400, 'Creating product with negative price rejected (400)');
 
     // 3.2 Reject product with cross-tenant category
+    const beanCategories = ((await (await fetch(`${API_BASE}/categories`, { headers: beanHeaders })).json()) as any).data;
+    const beanCatId = beanCategories[0].id;
+
     const crossCatRes = await fetch(`${API_BASE}/products`, {
       method: 'POST',
       headers: sunriseHeaders,
       body: JSON.stringify({
         name: 'Cross Cat Product',
-        category_id: 'cat-bean-1', // Belongs to Bean Theory!
+        category_id: beanCatId, // Belongs to Bean Theory!
         selling_price: 150,
       }),
     });
@@ -164,11 +190,22 @@ async function runTests() {
       body: JSON.stringify({
         items: [{ product_id: sunriseProdId, quantity: 1 }],
         discount_type: 'PERCENTAGE',
-        discount_percentage: 85, // Sunrise limit is 50%
+        discount_percentage: 85,
         payment_method: 'CASH',
       }),
     });
     assert(overDiscountRes.status === 400, 'Placing order exceeding max discount limit rejected (400)');
+
+    // 3.5 Reject order with invalid payment method
+    const badPaymentRes = await fetch(`${API_BASE}/orders`, {
+      method: 'POST',
+      headers: sunriseHeaders,
+      body: JSON.stringify({
+        items: [{ product_id: sunriseProdId, quantity: 1 }],
+        payment_method: 'CRYPTO_BITCOIN',
+      }),
+    });
+    assert(badPaymentRes.status === 400, 'Placing order with invalid payment method rejected (400)');
 
     // ----------------------------------------------------
     // SUITE 4: MULTI-TENANT ISOLATION (DATA ACCESS)
@@ -206,6 +243,17 @@ async function runTests() {
       }),
     });
     assert(crossOrderPlacement.status === 400, 'Bean Theory placing order with Sunrise product rejected (400)');
+
+    // 4.5 Inventory Movements Isolation
+    const sunriseMovements = ((await (await fetch(`${API_BASE}/inventory/movements`, { headers: sunriseHeaders })).json()) as any).data;
+    const beanMovements = ((await (await fetch(`${API_BASE}/inventory/movements`, { headers: beanHeaders })).json()) as any).data;
+    assert(sunriseMovements.every((m: any) => m.cafe_id === 'cafe-sunrise-001'), 'Sunrise inventory movements are completely isolated');
+    assert(beanMovements.every((m: any) => m.cafe_id === 'cafe-bean-002'), 'Bean Theory inventory movements are completely isolated');
+
+    // 4.6 AI Insights Isolation
+    const sunriseAI = ((await (await fetch(`${API_BASE}/ai/insights`, { headers: sunriseHeaders })).json()) as any).data;
+    const beanAI = ((await (await fetch(`${API_BASE}/ai/insights`, { headers: beanHeaders })).json()) as any).data;
+    assert(sunriseAI.sales_forecast !== undefined && beanAI.sales_forecast !== undefined, 'AI insights calculate independently for both cafes');
 
     // ----------------------------------------------------
     // SUITE 5: POS ATOMICITY, RECIPES & INVENTORY DEDUCTION
@@ -324,11 +372,11 @@ async function runTests() {
     console.log(`COMPREHENSIVE AUDIT SUMMARY: ${passed} PASSED, ${failed} FAILED`);
     console.log(`======================================================\n`);
 
-    if (failed > 0) {
-      process.exit(1);
-    }
+    server.close();
+    process.exit(failed > 0 ? 1 : 0);
   } catch (err: any) {
     console.error('Test execution error:', err);
+    server.close();
     process.exit(1);
   }
 }

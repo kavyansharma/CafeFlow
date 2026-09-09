@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getInvoices = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { search, payment_method, date_from, date_to } = req.query;
   let invoices = db.invoices.filter(i => i.cafe_id === cafeId);
 
@@ -50,7 +53,11 @@ export const getInvoices = (req: Request, res: Response) => {
 
 export const getInvoiceById = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const invoice = db.invoices.find(i => i.cafe_id === cafeId && (i.id === id || i.invoice_number === id));
 
@@ -66,3 +73,4 @@ export const getInvoiceById = (req: Request, res: Response) => {
     cafe_settings: cafeSettings,
   });
 };
+

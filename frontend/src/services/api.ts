@@ -1,13 +1,18 @@
-const getApiBase = () => {
+export const getApiBase = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (!envUrl) {
+  if (!envUrl || typeof envUrl !== 'string' || envUrl.trim() === '') {
     return '/api';
   }
-  const cleanUrl = envUrl.replace(/\/+$/, '');
+  const cleanUrl = envUrl.trim().replace(/\/+$/, '');
+  
+  // Prevent calling localhost in production builds
+  if (import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
+    console.warn('[CAFEFLOW] Production frontend detected localhost in VITE_API_URL; fallback to relative /api');
+    return '/api';
+  }
+
   return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
 };
-
-const API_BASE = getApiBase();
 
 export class ApiError extends Error {
   status: number;
@@ -32,7 +37,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE}${endpoint}`;
+  const base = getApiBase();
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  
+  // Guard against duplicate /api prefix
+  const url = (cleanEndpoint === '/api' || cleanEndpoint.startsWith('/api/'))
+    ? `${base.replace(/\/api$/, '')}${cleanEndpoint}`
+    : `${base}${cleanEndpoint}`;
+
   try {
     const response = await fetch(url, {
       ...options,

@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getSalesSummary = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { range = '7d', date_from, date_to } = req.query;
 
   const now = new Date();
@@ -106,7 +109,11 @@ export const getSalesSummary = (req: Request, res: Response) => {
 
 export const exportSalesCSV = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const orders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
   
   const headers = ['Invoice Number', 'Date', 'Customer Name', 'Phone', 'Cashier', 'Subtotal', 'Tax', 'Discount', 'Total Amount', 'Payment Method'];
@@ -129,3 +136,4 @@ export const exportSalesCSV = (req: Request, res: Response) => {
   res.setHeader('Content-Disposition', 'attachment; filename="cafeflow_sales_export.csv"');
   return res.send(csvContent);
 };
+

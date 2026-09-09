@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { AIService } from '../services/aiService';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getAIBusinessInsights = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
 
   const salesForecast = AIService.generateSalesForecast(cafeId);
   const demandPredictions = AIService.getDemandPredictions(cafeId);
@@ -23,7 +25,7 @@ export const getAIBusinessInsights = (req: Request, res: Response) => {
       product_insights: [
         {
           title: 'Beverage Revenue Velocity',
-          insight: 'Core beverage category generates over 65% of total revenue with strong unit gross margins.',
+          insight: 'Core beverage category generates highest repeat volume with strong unit gross margins.',
           badge: 'Top Performer',
         },
         {
@@ -33,10 +35,11 @@ export const getAIBusinessInsights = (req: Request, res: Response) => {
         },
         {
           title: 'Pairing Attachment',
-          insight: 'Combo pairing and add-ons boost Average Order Value by 24.5%.',
+          insight: 'Combo pairing and food add-ons boost Average Order Value by over 20%.',
           badge: 'Cross-Sell Win',
         },
       ],
     },
   });
 };
+

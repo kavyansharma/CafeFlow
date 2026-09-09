@@ -2,11 +2,14 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { RecipeItem, CAFE_SUNRISE_ID } from '../database/seedData';
+import { RecipeItem } from '../database/seedData';
 
 export const getRecipes = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
 
   const tenantRecipes = db.recipes.filter(r => r.cafe_id === cafeId);
   const recipesWithDetails = tenantRecipes.map(r => {
@@ -30,7 +33,11 @@ export const getRecipes = (req: Request, res: Response) => {
 
 export const getRecipeByProductId = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { productId } = req.params;
   const recipe = db.recipes.find(r => r.cafe_id === cafeId && r.product_id === productId);
   const product = db.products.find(p => p.cafe_id === cafeId && p.id === productId);
@@ -62,7 +69,11 @@ export const getRecipeByProductId = (req: Request, res: Response) => {
 };
 
 export const saveRecipe = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { product_id, instructions, prep_time_mins, items } = req.body;
 
   if (!product_id || !Array.isArray(items)) {
@@ -74,19 +85,34 @@ export const saveRecipe = (req: AuthRequest, res: Response) => {
     return res.status(404).json({ success: false, message: 'Product not found in this cafe' });
   }
 
+  // Pre-validate all items belong to this cafe
+  for (const item of items) {
+    if (!item.inventory_id) {
+      return res.status(400).json({ success: false, message: 'Every recipe item must specify an inventory_id' });
+    }
+    const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === item.inventory_id);
+    if (!inv) {
+      return res.status(400).json({ success: false, message: `Raw material ${item.inventory_id} not found in this cafe` });
+    }
+    const qty = Number(item.quantity_required);
+    if (isNaN(qty) || qty <= 0) {
+      return res.status(400).json({ success: false, message: `Quantity required for ${inv.name} must be greater than 0` });
+    }
+  }
+
   // Calculate COGS from recipe items
   let totalCogs = 0;
   const processedItems: RecipeItem[] = items.map((item: any) => {
-    const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === item.inventory_id);
-    const unitCost = inv ? inv.cost_per_unit : 0;
+    const inv = db.inventory.find(i => i.cafe_id === cafeId && i.id === item.inventory_id)!;
+    const unitCost = inv.cost_per_unit;
     const costContrib = Number((unitCost * Number(item.quantity_required)).toFixed(2));
     totalCogs += costContrib;
 
     return {
       inventory_id: item.inventory_id,
-      inventory_name: inv ? inv.name : 'Unknown Raw Material',
+      inventory_name: inv.name,
       quantity_required: Number(item.quantity_required),
-      unit: item.unit || inv?.unit || 'units',
+      unit: item.unit || inv.unit || 'units',
       cost_contribution: costContrib,
     };
   });
@@ -130,7 +156,11 @@ export const saveRecipe = (req: AuthRequest, res: Response) => {
 };
 
 export const deleteRecipe = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { productId } = req.params;
   const index = db.recipes.findIndex(r => r.cafe_id === cafeId && r.product_id === productId);
 
@@ -146,3 +176,4 @@ export const deleteRecipe = (req: AuthRequest, res: Response) => {
 
   return res.json({ success: true, message: 'Recipe deleted', data: removed });
 };
+

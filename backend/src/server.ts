@@ -96,12 +96,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 // Start listening
-app.listen(config.port, () => {
-  console.log(`=========================================`);
-  console.log(`☕ CAFEFLOW Backend running on port ${config.port}`);
-  console.log(`🚀 API Base URL: http://localhost:${config.port}/api`);
-  console.log(`✨ Environment: ${config.nodeEnv}`);
-  console.log(`=========================================`);
-});
+if (config.nodeEnv !== 'test') {
+  app.listen(config.port, () => {
+    console.log(`=========================================`);
+    console.log(`☕ CAFEFLOW Backend running on port ${config.port}`);
+    console.log(`🚀 API Base URL: http://localhost:${config.port}/api`);
+    console.log(`✨ Environment: ${config.nodeEnv}`);
+    console.log(`=========================================`);
+  });
+}
 
 export default app;
+

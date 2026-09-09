@@ -84,13 +84,13 @@ All demo accounts use password: `demo123`
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Local Development
 
 ### Prerequisites
 - Node.js (v18+)
 - npm (v9+)
 
-### Installation & Running Locally
+### Local Development Setup
 
 1. **Clone the repository**:
    ```bash
@@ -104,7 +104,7 @@ All demo accounts use password: `demo123`
    npm install
    npm run dev
    ```
-   *Backend runs on `http://localhost:5000`*
+   *Backend API runs locally on `http://localhost:5000` (`http://localhost:5000/api`)*
 
 3. **Frontend Setup**:
    ```bash
@@ -112,19 +112,51 @@ All demo accounts use password: `demo123`
    npm install
    npm run dev
    ```
-   *Frontend runs on `http://localhost:5173`*
+   *Frontend UI runs locally on `http://localhost:5173`*
 
-4. **Run Automated Multi-Tenant Tests**:
+4. **Run Automated Test Suite**:
    ```bash
    cd backend
-   npm run build
-   node dist/tests/tenant_isolation_test.js
+   npm test
    ```
+
+---
+
+## 🔒 Security Architecture & Multi-Tenancy
+
+- **Authoritative Server Context**: Every protected backend endpoint verifies authenticated identity (`req.user`) from the signed JWT claims. The client cannot spoof or override `cafe_id`.
+- **Strict Tenant Scoping**: All database queries and store accesses enforce `WHERE cafe_id = authenticatedCafeId`. Cross-tenant requests return `404 Not Found` or `400 Bad Request`.
+- **POS Calculation Integrity**: Item unit prices, GST taxes, subtotal, discount thresholds, and loyalty point redemptions are computed strictly on the backend from verified catalog data.
+- **Role-Based Access Boundaries (RBAC)**:
+  - `OWNER`: Full cafe administration, staff creation/updates, financial settings, and audit trails.
+  - `MANAGER`: POS billing, catalog management, recipes/BOM, customer CRM, operational reporting, and analytics.
+  - `CASHIER`: POS checkout, order hold/resume, invoice reprints, and own shift reconciliation. Restricted from modifying system settings, staff, or customer loyalty points manually.
+
+---
+
+## 🌐 Production Deployment Architecture
+
+### Frontend (Vercel)
+- **Deployment Target**: Vercel SPA (`https://cafe-flow-eight.vercel.app`)
+- **SPA Rewrites**: Handled in `frontend/vercel.json` routing all requests to `index.html`.
+- **Environment Variables**:
+  - `VITE_API_URL`: Production Backend API URL (e.g. `https://cafeflow-api.vercel.app` or custom domain).
+
+### Backend (Node.js / Express API)
+- **Deployment Options**: Vercel Serverless Functions (`backend/vercel.json`) or Long-Running Services (Render / Railway / AWS ECS).
+- **Environment Variables**:
+  - `PORT`: Server port (default: `5000`)
+  - `NODE_ENV`: `production`
+  - `JWT_SECRET`: High-entropy production signing key
+  - `CORS_ORIGIN`: Allowed origins (e.g. `https://cafe-flow-eight.vercel.app`)
+
+---
+
+## 🗄️ Database Architecture
+The database schema is fully defined in `backend/src/database/schema.sql` for PostgreSQL with normalized relationships, UUID primary keys, and foreign key constraints across `cafes`, `users`, `categories`, `products`, `inventory`, `inventory_movements`, `recipes`, `recipe_items`, `customers`, `orders`, `order_items`, `invoices`, `shifts`, `notifications`, and `audit_logs`.
 
 ---
 
 ## 📄 License
 Commercial SaaS Edition — Designed & Developed for Modern Cafes.
 
-## 🗄️ Database Architecture
-The database schema is fully defined in `backend/src/database/schema.sql` for PostgreSQL with normalized relationships, UUID primary keys, and foreign key constraints across `users`, `categories`, `products`, `inventory`, `inventory_movements`, `recipes`, `recipe_items`, `customers`, `orders`, `order_items`, `invoices`, `shifts`, `notifications`, `settings`, and `audit_logs`.

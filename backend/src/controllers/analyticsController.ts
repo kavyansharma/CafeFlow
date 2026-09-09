@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getDashboardAnalytics = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -20,14 +22,14 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
 
   const todayRevenue = todayOrders.reduce((acc, o) => acc + o.total_amount, 0);
   const yesterdayRevenue = yesterdayOrders.reduce((acc, o) => acc + o.total_amount, 0);
-  const revenueGrowth = yesterdayRevenue > 0 ? Number((((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100).toFixed(1)) : 12.5;
+  const revenueGrowth = yesterdayRevenue > 0 ? Number((((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100).toFixed(1)) : 0;
 
-  const todayOrdersCount = todayOrders.length || (yesterdayOrders.length ? Math.round(yesterdayOrders.length * 1.08) : (cafeOrders.length > 0 ? Math.min(cafeOrders.length, 12) : 0));
-  const yesterdayOrdersCount = yesterdayOrders.length || (cafeOrders.length > 0 ? Math.min(cafeOrders.length, 10) : 0);
-  const ordersGrowth = yesterdayOrdersCount > 0 ? Number((((todayOrdersCount - yesterdayOrdersCount) / yesterdayOrdersCount) * 100).toFixed(1)) : 8.2;
+  const todayOrdersCount = todayOrders.length;
+  const yesterdayOrdersCount = yesterdayOrders.length;
+  const ordersGrowth = yesterdayOrdersCount > 0 ? Number((((todayOrdersCount - yesterdayOrdersCount) / yesterdayOrdersCount) * 100).toFixed(1)) : 0;
 
-  const effectiveTodayRev = todayRevenue > 0 ? todayRevenue : (cafeOrders.length > 0 ? Number((cafeOrders.reduce((a, o) => a + o.total_amount, 0) / Math.max(1, Math.min(7, cafeOrders.length))).toFixed(2)) : 0);
-  const aov = Number((effectiveTodayRev / (todayOrdersCount || 1)).toFixed(2));
+  const effectiveTodayRev = todayRevenue;
+  const aov = todayOrdersCount > 0 ? Number((effectiveTodayRev / todayOrdersCount).toFixed(2)) : (cafeOrders.length > 0 ? Number((cafeOrders.reduce((a, o) => a + o.total_amount, 0) / cafeOrders.length).toFixed(2)) : 0);
 
   // Product sales velocity for this cafe
   const productPerformance: Record<string, { id: string; name: string; category: string; units: number; revenue: number; cost: number }> = {};
@@ -86,16 +88,18 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
       status: inv.payment_status,
     }));
 
-  // Hourly sales pattern based on tenant data or baseline
-  const hourlyPattern = [
-    { hour: '08:00', sales: Math.round(effectiveTodayRev * 0.08) },
-    { hour: '10:00', sales: Math.round(effectiveTodayRev * 0.18) },
-    { hour: '12:00', sales: Math.round(effectiveTodayRev * 0.15) },
-    { hour: '14:00', sales: Math.round(effectiveTodayRev * 0.12) },
-    { hour: '16:00', sales: Math.round(effectiveTodayRev * 0.22) },
-    { hour: '18:00', sales: Math.round(effectiveTodayRev * 0.25) },
-    { hour: '20:00', sales: Math.round(effectiveTodayRev * 0.10) },
-  ];
+  // Hourly sales pattern based strictly on current cafe orders
+  const hourlySlots = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+  const hourlyPattern = hourlySlots.map(slot => {
+    const slotHour = parseInt(slot.split(':')[0], 10);
+    const slotSales = cafeOrders
+      .filter(o => {
+        const orderHour = new Date(o.created_at).getHours();
+        return orderHour >= slotHour && orderHour < slotHour + 2;
+      })
+      .reduce((sum, o) => sum + o.total_amount, 0);
+    return { hour: slot, sales: Number(slotSales.toFixed(2)) };
+  });
 
   const cafeCustomers = db.customers.filter(c => c.cafe_id === cafeId);
 
@@ -107,9 +111,9 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
       today_orders: todayOrdersCount,
       orders_growth: ordersGrowth,
       average_order_value: aov,
-      aov_growth: 4.3,
+      aov_growth: 0,
       total_customers: cafeCustomers.length,
-      customer_growth: 6.8,
+      customer_growth: 0,
     },
     top_selling_products: topSelling,
     low_stock_alerts: lowStockAlerts,
@@ -120,7 +124,11 @@ export const getDashboardAnalytics = (req: Request, res: Response) => {
 
 export const getDeepAnalytics = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const cafeOrders = db.orders.filter(o => o.cafe_id === cafeId && o.status === 'COMPLETED');
   const cafeCustomers = db.customers.filter(c => c.cafe_id === cafeId);
 
@@ -179,3 +187,4 @@ export const getDeepAnalytics = (req: Request, res: Response) => {
     },
   });
 };
+

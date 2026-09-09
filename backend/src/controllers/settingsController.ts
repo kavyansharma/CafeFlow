@@ -1,17 +1,24 @@
 import { Request, Response } from 'express';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getSettings = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const settings = db.getCafeSettings(cafeId);
   return res.json({ success: true, data: settings });
 };
 
 export const updateSettings = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const updates = req.body;
 
   if (updates.default_gst_rate !== undefined) {
@@ -30,12 +37,20 @@ export const updateSettings = (req: AuthRequest, res: Response) => {
     updates.max_discount_percent = disc;
   }
 
-  if (updates.loyalty_percentage !== undefined) {
-    const loy = Number(updates.loyalty_percentage);
-    if (isNaN(loy) || loy < 0 || loy > 50) {
-      return res.status(400).json({ success: false, message: 'Loyalty percentage must be between 0% and 50%' });
+  if (updates.loyalty_spend_per_point !== undefined) {
+    const loySpend = Number(updates.loyalty_spend_per_point);
+    if (isNaN(loySpend) || loySpend <= 0) {
+      return res.status(400).json({ success: false, message: 'Loyalty spend per point must be greater than 0' });
     }
-    updates.loyalty_percentage = loy;
+    updates.loyalty_spend_per_point = loySpend;
+  }
+
+  if (updates.loyalty_point_value !== undefined) {
+    const loyVal = Number(updates.loyalty_point_value);
+    if (isNaN(loyVal) || loyVal <= 0) {
+      return res.status(400).json({ success: false, message: 'Loyalty point value must be greater than 0' });
+    }
+    updates.loyalty_point_value = loyVal;
   }
 
   const updatedSettings = db.updateCafeSettings(cafeId, updates);
@@ -44,3 +59,4 @@ export const updateSettings = (req: AuthRequest, res: Response) => {
 
   return res.json({ success: true, message: 'Settings updated successfully', data: updatedSettings });
 };
+

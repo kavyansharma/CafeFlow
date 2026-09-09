@@ -3,12 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
 import { InventoryService } from '../services/inventoryService';
-import { Order, Invoice, OrderItem, CAFE_SUNRISE_ID } from '../database/seedData';
-
-let invoiceSequence = 1050;
+import { Order, Invoice, OrderItem } from '../database/seedData';
 
 export const createOrder = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const {
     items,
     customer_id,
@@ -18,7 +20,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     discount_type = 'NONE',
     discount_percentage = 0,
     payment_method = 'CASH',
-    amount_received = 0,
+    amount_received,
     points_to_redeem = 0,
     notes,
   } = req.body;
@@ -27,7 +29,12 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     return res.status(400).json({ success: false, message: 'Cart items cannot be empty' });
   }
 
-  // Validate quantities and item presence
+  const validPaymentMethods: Array<'CASH' | 'UPI' | 'CARD'> = ['CASH', 'UPI', 'CARD'];
+  if (!validPaymentMethods.includes(payment_method)) {
+    return res.status(400).json({ success: false, message: `Invalid payment method. Allowed: ${validPaymentMethods.join(', ')}` });
+  }
+
+  // Validate quantities and item presence strictly in this cafe
   for (const item of items) {
     if (!item.product_id) {
       return res.status(400).json({ success: false, message: 'Every cart item must have a valid product_id' });
@@ -42,11 +49,20 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     }
   }
 
-  const cashierId = req.user?.id || 'usr-cashier-003';
-  const cashierName = req.user?.name || 'Rahul Sen';
+  // Validate customer belongs to this cafe if specified
+  let customer = null;
+  if (customer_id) {
+    customer = db.customers.find(c => c.cafe_id === cafeId && c.id === customer_id);
+    if (!customer) {
+      return res.status(400).json({ success: false, message: 'Customer not found in this cafe' });
+    }
+  }
+
+  const cashierId = req.user?.id || 'cashier';
+  const cashierName = req.user?.name || 'Staff';
   const cafeSettings = db.getCafeSettings(cafeId);
 
-  // 1. Calculate items subtotal and GST
+  // 1. Calculate items subtotal and GST strictly using trusted server database prices
   let subtotal = 0;
   let totalGst = 0;
 
@@ -107,19 +123,19 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 
   let loyaltyDiscount = 0;
   let pointsRedeemed = Number(points_to_redeem || 0);
-  if (pointsRedeemed < 0) {
+  if (isNaN(pointsRedeemed) || pointsRedeemed < 0) {
     return res.status(400).json({ success: false, message: 'Loyalty points to redeem cannot be negative.' });
   }
 
   if (pointsRedeemed > 0) {
-    if (customer_id) {
-      const customer = db.customers.find(c => c.cafe_id === cafeId && c.id === customer_id);
-      if (!customer || customer.loyalty_points < pointsRedeemed) {
-        return res.status(400).json({
-          success: false,
-          message: `Customer only has ${customer?.loyalty_points || 0} loyalty points available.`,
-        });
-      }
+    if (!customer) {
+      return res.status(400).json({ success: false, message: 'Customer must be selected to redeem loyalty points' });
+    }
+    if (customer.loyalty_points < pointsRedeemed) {
+      return res.status(400).json({
+        success: false,
+        message: `Customer only has ${customer.loyalty_points} loyalty points available.`,
+      });
     }
     loyaltyDiscount = Number((pointsRedeemed * cafeSettings.loyalty_point_value).toFixed(2));
   }
@@ -133,7 +149,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     : totalAmount;
 
   if (isNaN(tendered) || tendered < 0) {
-    return res.status(400).json({ success: false, message: 'Amount received cannot be negative.' });
+    return res.status(400).json({ success: false, message: 'Amount received cannot be negative or invalid.' });
   }
   if (payment_method === 'CASH' && tendered < totalAmount) {
     return res.status(400).json({ success: false, message: `Cash tendered (₹${tendered}) is less than total bill amount (₹${totalAmount}).` });
@@ -158,16 +174,16 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     cafe_id: cafeId,
     invoice_number: invoiceNumber,
     shift_id: activeShift?.id,
-    customer_id: customer_id || undefined,
-    customer_name: customer_name || 'Walk-in Customer',
-    customer_phone: customer_phone || undefined,
+    customer_id: customer?.id,
+    customer_name: customer_name ? String(customer_name).trim() : (customer ? customer.name : 'Walk-in Customer'),
+    customer_phone: customer_phone ? String(customer_phone).trim() : customer?.phone,
     cashier_id: cashierId,
     cashier_name: cashierName,
     items: processedItems,
     subtotal: Number(subtotal.toFixed(2)),
     discount_amount: calculatedDiscount,
     discount_type,
-    discount_percentage,
+    discount_percentage: discount_type === 'PERCENTAGE' ? Number(discount_percentage) : 0,
     gst_amount: Number(totalGst.toFixed(2)),
     total_amount: totalAmount,
     points_earned: pointsEarned,
@@ -177,7 +193,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     amount_received: tendered,
     change_returned: changeReturned,
     status: 'COMPLETED',
-    notes: notes || undefined,
+    notes: notes ? String(notes).trim() : undefined,
     created_at: now,
   };
 
@@ -192,6 +208,7 @@ export const createOrder = (req: AuthRequest, res: Response) => {
     invoice_date: now,
     customer_name: newOrder.customer_name,
     customer_phone: newOrder.customer_phone,
+    customer_email: customer?.email,
     cashier_name: cashierName,
     items: processedItems,
     subtotal: newOrder.subtotal,
@@ -211,14 +228,11 @@ export const createOrder = (req: AuthRequest, res: Response) => {
   InventoryService.processOrderStockDeduction(cafeId, processedItems, orderId, cashierName);
 
   // 5. Update Customer history & Loyalty points within cafe
-  if (customer_id) {
-    const customer = db.customers.find(c => c.cafe_id === cafeId && c.id === customer_id);
-    if (customer) {
-      customer.total_orders += 1;
-      customer.total_spent = Number((customer.total_spent + totalAmount).toFixed(2));
-      customer.loyalty_points = Math.max(0, customer.loyalty_points - pointsRedeemed + pointsEarned);
-      customer.last_visit = now;
-    }
+  if (customer) {
+    customer.total_orders += 1;
+    customer.total_spent = Number((customer.total_spent + totalAmount).toFixed(2));
+    customer.loyalty_points = Math.max(0, customer.loyalty_points - pointsRedeemed + pointsEarned);
+    customer.last_visit = now;
   }
 
   // 6. Update Shift sales totals
@@ -253,20 +267,24 @@ export const createOrder = (req: AuthRequest, res: Response) => {
 };
 
 export const holdOrder = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { items, customer_name, customer_phone, notes } = req.body;
 
-  if (!items || items.length === 0) {
+  if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: 'No items in cart to hold' });
   }
 
   const heldOrder: any = {
     id: `held-${uuidv4().substring(0, 8)}`,
     cafe_id: cafeId,
-    customer_name: customer_name || 'Walk-in Customer',
-    customer_phone,
+    customer_name: customer_name ? String(customer_name).trim() : 'Walk-in Customer',
+    customer_phone: customer_phone ? String(customer_phone).trim() : undefined,
     items,
-    notes: notes || 'Parked Bill',
+    notes: notes ? String(notes).trim() : 'Parked Bill',
     created_at: new Date().toISOString(),
   };
 
@@ -276,14 +294,22 @@ export const holdOrder = (req: AuthRequest, res: Response) => {
 
 export const getHeldOrders = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const held = db.heldOrders.filter(h => h.cafe_id === cafeId);
   return res.json({ success: true, count: held.length, data: held });
 };
 
 export const removeHeldOrder = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const index = db.heldOrders.findIndex(h => h.cafe_id === cafeId && h.id === id);
   if (index >= 0) {
@@ -295,7 +321,11 @@ export const removeHeldOrder = (req: Request, res: Response) => {
 
 export const getOrders = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { limit = 50, status, search } = req.query;
   let orders = db.orders.filter(o => o.cafe_id === cafeId);
 
@@ -322,7 +352,11 @@ export const getOrders = (req: Request, res: Response) => {
 
 export const getOrderById = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const order = db.orders.find(o => o.cafe_id === cafeId && (o.id === id || o.invoice_number === id));
   if (!order) {
@@ -332,3 +366,4 @@ export const getOrderById = (req: Request, res: Response) => {
 
   return res.json({ success: true, data: { ...order, invoice } });
 };
+

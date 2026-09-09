@@ -2,11 +2,14 @@ import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../database/db';
 import { AuthRequest } from '../middleware/auth';
-import { CAFE_SUNRISE_ID } from '../database/seedData';
 
 export const getCustomers = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { search } = req.query;
   let customers = db.customers.filter(c => c.cafe_id === cafeId);
 
@@ -28,7 +31,11 @@ export const getCustomers = (req: Request, res: Response) => {
 
 export const getCustomerById = (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const cafeId = authReq.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = authReq.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const customer = db.customers.find(c => c.cafe_id === cafeId && (c.id === id || c.phone === id));
 
@@ -68,7 +75,11 @@ export const getCustomerById = (req: Request, res: Response) => {
 };
 
 export const createCustomer = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { name, phone, email, notes } = req.body;
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -107,7 +118,11 @@ export const createCustomer = (req: AuthRequest, res: Response) => {
 };
 
 export const updateCustomer = (req: AuthRequest, res: Response) => {
-  const cafeId = req.user?.cafe_id || CAFE_SUNRISE_ID;
+  const cafeId = req.user?.cafe_id;
+  if (!cafeId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
   const { id } = req.params;
   const index = db.customers.findIndex(c => c.cafe_id === cafeId && c.id === id);
 
@@ -115,21 +130,50 @@ export const updateCustomer = (req: AuthRequest, res: Response) => {
     return res.status(404).json({ success: false, message: 'Customer not found in this cafe' });
   }
 
-  if (req.body.loyalty_points !== undefined) {
-    const pts = Number(req.body.loyalty_points);
-    if (isNaN(pts) || pts < 0) {
-      return res.status(400).json({ success: false, message: 'Loyalty points cannot be negative' });
+  const existing = db.customers[index];
+  const { name, phone, email, notes, loyalty_points } = req.body;
+
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Customer name cannot be empty' });
     }
+    existing.name = name.trim();
   }
 
-  const existing = db.customers[index];
-  const updated = {
-    ...existing,
-    ...req.body,
-    cafe_id: cafeId,
-    loyalty_points: req.body.loyalty_points !== undefined ? Number(req.body.loyalty_points) : existing.loyalty_points,
-  };
+  if (phone !== undefined) {
+    const cleanPhone = String(phone).trim();
+    if (cleanPhone.length < 5) {
+      return res.status(400).json({ success: false, message: 'Valid phone number required (at least 5 digits)' });
+    }
+    const duplicatePhone = db.customers.find(c => c.cafe_id === cafeId && c.id !== id && c.phone === cleanPhone);
+    if (duplicatePhone) {
+      return res.status(409).json({ success: false, message: 'Another customer with this phone number already exists in this cafe' });
+    }
+    existing.phone = cleanPhone;
+  }
 
-  db.customers[index] = updated;
-  return res.json({ success: true, message: 'Customer updated', data: updated });
+  if (email !== undefined) {
+    existing.email = email ? String(email).trim() : undefined;
+  }
+
+  if (notes !== undefined) {
+    existing.notes = notes ? String(notes).trim() : undefined;
+  }
+
+  // Only OWNER or MANAGER can manually adjust loyalty points
+  if (loyalty_points !== undefined) {
+    const isPrivileged = req.user?.role === 'OWNER' || req.user?.role === 'MANAGER';
+    if (!isPrivileged) {
+      return res.status(403).json({ success: false, message: 'Only managers and owners can manually modify customer loyalty points' });
+    }
+    const pts = Number(loyalty_points);
+    if (isNaN(pts) || pts < 0 || !Number.isInteger(pts)) {
+      return res.status(400).json({ success: false, message: 'Loyalty points must be a non-negative integer' });
+    }
+    existing.loyalty_points = pts;
+  }
+
+  db.customers[index] = existing;
+  return res.json({ success: true, message: 'Customer updated', data: existing });
 };
+

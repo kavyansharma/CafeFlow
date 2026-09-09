@@ -3,15 +3,21 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { db } from '../database/db';
 
-export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    name: string;
-    role: 'OWNER' | 'MANAGER' | 'CASHIER';
-    cafe_id: string;
-  };
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: 'OWNER' | 'MANAGER' | 'CASHIER';
+  cafe_id: string;
 }
+
+export interface AuthRequest extends Request {
+  user?: AuthUser;
+}
+
+export const getTenantId = (req: AuthRequest): string | null => {
+  return req.user?.cafe_id || null;
+};
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
@@ -52,7 +58,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 export const requireRoles = (roles: Array<'OWNER' | 'MANAGER' | 'CASHIER'>) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
@@ -79,3 +85,4 @@ export const requireActiveCafe = (req: AuthRequest, res: Response, next: NextFun
 
   next();
 };
+

@@ -52,7 +52,16 @@ async function runTests() {
     const beanCafe = beanLogin.cafe;
     assert(beanLoginRes.status === 200 && beanToken && beanCafe?.id === 'cafe-bean-002', 'Bean Theory Owner login returned 200 and cafe-bean-002');
 
-    // 1.3 Sunrise Cashier Login
+    // 1.3 Sunrise Manager Login
+    const sunriseMgrLoginRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'manager@sunrise.demo', password: 'demo123' }),
+    });
+    const sunriseMgrLogin = (await sunriseMgrLoginRes.json()) as any;
+    assert(sunriseMgrLoginRes.status === 200 && sunriseMgrLogin.user?.role === 'MANAGER', 'Sunrise Manager login returned 200 with MANAGER role');
+
+    // 1.4 Sunrise Cashier Login
     const cashierLoginRes = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,7 +71,25 @@ async function runTests() {
     const cashierToken = cashierLogin.token;
     assert(cashierLoginRes.status === 200 && cashierLogin.user?.role === 'CASHIER', 'Sunrise Cashier login returned 200 with CASHIER role');
 
-    // 1.4 Invalid credentials rejection
+    // 1.5 Bean Theory Manager Login
+    const beanMgrLoginRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'manager@bean.demo', password: 'demo123' }),
+    });
+    const beanMgrLogin = (await beanMgrLoginRes.json()) as any;
+    assert(beanMgrLoginRes.status === 200 && beanMgrLogin.user?.role === 'MANAGER', 'Bean Theory Manager login returned 200 with MANAGER role');
+
+    // 1.6 Bean Theory Cashier Login
+    const beanCashierLoginRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'cashier@bean.demo', password: 'demo123' }),
+    });
+    const beanCashierLogin = (await beanCashierLoginRes.json()) as any;
+    assert(beanCashierLoginRes.status === 200 && beanCashierLogin.user?.role === 'CASHIER', 'Bean Theory Cashier login returned 200 with CASHIER role');
+
+    // 1.7 Invalid credentials rejection
     const badLoginRes = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,11 +97,11 @@ async function runTests() {
     });
     assert(badLoginRes.status === 401, 'Invalid password rejected with 401 Unauthorized');
 
-    // 1.5 Missing Authorization Header rejection
+    // 1.8 Missing Authorization Header rejection
     const noAuthRes = await fetch(`${API_BASE}/products`);
     assert(noAuthRes.status === 401, 'Unauthenticated request to /products rejected with 401');
 
-    // 1.6 Malformed / Expired JWT rejection
+    // 1.9 Malformed / Expired JWT rejection
     const fakeTokenRes = await fetch(`${API_BASE}/products`, {
       headers: { Authorization: 'Bearer this.is.an.invalid.jwt.token' },
     });
@@ -314,6 +341,11 @@ async function runTests() {
     const beanInvoices = ((await (await fetch(`${API_BASE}/invoices`, { headers: beanHeaders })).json()) as any).data;
     assert(beanInvoices.length > 0 && beanInvoices[0].invoice_number.startsWith('BT-2026-'), 'Bean Theory invoice has correct prefix BT-2026-');
     assert(beanInvoices.every((inv: any) => inv.cafe_id === 'cafe-bean-002'), 'Bean Theory invoices contain only Bean Theory records');
+
+    // 6.3 Cross-tenant invoice access by ID returns 404
+    const sunriseInvoiceId = sunriseInvoices[0].id;
+    const crossInvoiceRes = await fetch(`${API_BASE}/invoices/${sunriseInvoiceId}`, { headers: beanHeaders });
+    assert(crossInvoiceRes.status === 404, 'Bean Theory accessing Sunrise invoice ID returns 404 Not Found');
 
     // ----------------------------------------------------
     // SUITE 7: SHIFTS & AUDIT LOGS ISOLATION

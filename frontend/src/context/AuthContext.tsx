@@ -44,8 +44,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             localStorage.setItem('cafeflow_user', JSON.stringify(res.user));
           }
-        } catch (err) {
-          console.warn('Session check failed, reverting to cached/demo fallback if available', err);
+        } catch (err: any) {
+          if (err?.status === 401) {
+            setUser(null);
+            setCurrentCafe(null);
+            setToken(null);
+            localStorage.removeItem('cafeflow_token');
+            localStorage.removeItem('cafeflow_user');
+            localStorage.removeItem('cafeflow_cafe');
+          } else {
+            console.warn('Session check network issue:', err?.message || err);
+          }
         }
       }
       setIsLoading(false);

@@ -1,17 +1,42 @@
+export const isTauri = (): boolean => {
+  return typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+};
+
 export const getApiBase = (): string => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (!envUrl || typeof envUrl !== 'string' || envUrl.trim() === '') {
-    return '/api';
+  // 1. Check custom user-configured API URL from LocalStorage override
+  if (typeof window !== 'undefined') {
+    const customUrl = localStorage.getItem('cafeflow_api_url');
+    if (customUrl && typeof customUrl === 'string' && customUrl.trim() !== '') {
+      const cleanCustom = customUrl.trim().replace(/\/+$/, '');
+      return cleanCustom.endsWith('/api') ? cleanCustom : `${cleanCustom}/api`;
+    }
   }
-  const cleanUrl = envUrl.trim().replace(/\/+$/, '');
-  
-  // Prevent calling localhost in production builds
-  if (import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
-    console.warn('[CAFEFLOW] Production frontend detected localhost in VITE_API_URL; fallback to relative /api');
+
+  // 2. Check environment variable VITE_API_URL
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    const cleanUrl = envUrl.trim().replace(/\/+$/, '');
+    // In production web browser, guard against accidentally bundled localhost
+    if (!isTauri() && import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
+      console.warn('[CAFEFLOW] Web production detected localhost in VITE_API_URL; fallback to relative /api');
+      return '/api';
+    }
+    return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+  }
+
+  // 3. Development mode (both Web & Desktop)
+  if (import.meta.env.DEV) {
+    return 'http://localhost:5000/api';
+  }
+
+  // 4. Web browser relative fallback (same-origin reverse proxy)
+  if (!isTauri()) {
     return '/api';
   }
 
-  return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+  // 5. Desktop Tauri production without VITE_API_URL
+  // If no environment variable or override is set, return relative /api
+  return '/api';
 };
 
 export class ApiError extends Error {
@@ -61,7 +86,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     return data as T;
   } catch (error: any) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError(error.message || 'Network error occurred', 500);
+    
+    // User-friendly network failure message (no raw stack traces)
+    if (
+      error.name === 'TypeError' ||
+      error.message?.includes('fetch') ||
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('NetworkError') ||
+      error.message?.includes('network') ||
+      error.message?.includes('Load failed')
+    ) {
+      throw new ApiError('Unable to connect to CAFELOW server. Please check your internet connection.', 0);
+    }
+    
+    throw new ApiError(error.message || 'Unable to connect to CAFELOW server. Please check your internet connection.', 500);
   }
 }
 
@@ -167,4 +205,39 @@ export const api = {
   getNotifications: () => request<any>('/notifications'),
   markNotificationRead: (id: string) => request<any>(`/notifications/${id}/read`, { method: 'PUT' }),
   markAllNotificationsRead: () => request<any>('/notifications/read-all', { method: 'POST' }),
+
+  // Health & Connection Diagnostics
+  checkHealth: async (customBaseUrl?: string): Promise<{ ok: boolean; message: string; version?: string }> => {
+    try {
+      const baseUrl = customBaseUrl ? customBaseUrl.trim().replace(/\/+$/, '') : getApiBase();
+      const targetUrl = baseUrl.endsWith('/api') ? `${baseUrl}/health` : `${baseUrl}/api/health`;
+      const res = await fetch(targetUrl, { method: 'GET' });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        return { ok: true, message: json?.message || 'Connected to CAFEFLOW server', version: json?.version };
+      }
+      return { ok: false, message: `Server returned status ${res.status}` };
+    } catch {
+      return { ok: false, message: 'Unable to connect to CAFELOW server. Please check your internet connection.' };
+    }
+  },
+
+  // Custom Desktop Server Override helpers
+  setApiOverride: (url: string) => {
+    if (typeof window !== 'undefined') {
+      const clean = url.trim().replace(/\/+$/, '');
+      localStorage.setItem('cafeflow_api_url', clean);
+    }
+  },
+  getApiOverride: (): string | null => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cafeflow_api_url');
+    }
+    return null;
+  },
+  clearApiOverride: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('cafeflow_api_url');
+    }
+  },
 };

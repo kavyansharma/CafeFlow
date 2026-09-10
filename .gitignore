@@ -22,8 +22,7 @@ build/
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Tauri / Rust
+target/
+**/src-tauri/target/
+Cargo.lock

@@ -3,12 +3,18 @@ export const isTauri = (): boolean => {
 };
 
 export const getApiBase = (): string => {
-  // 1. Check custom user-configured API URL from LocalStorage override
+  // 1. Check custom user-configured API URL from LocalStorage override (Desktop Tauri or explicit user override)
   if (typeof window !== 'undefined') {
     const customUrl = localStorage.getItem('cafeflow_api_url');
     if (customUrl && typeof customUrl === 'string' && customUrl.trim() !== '') {
       const cleanCustom = customUrl.trim().replace(/\/+$/, '');
-      return cleanCustom.endsWith('/api') ? cleanCustom : `${cleanCustom}/api`;
+      // In production web browser, guard against stale localhost overrides
+      if (!isTauri() && import.meta.env.PROD && (cleanCustom.includes('localhost') || cleanCustom.includes('127.0.0.1') || cleanCustom === '/api')) {
+        console.warn('[CAFEFLOW API] Ignored stale localhost override in web production:', cleanCustom);
+      } else {
+        const resolved = cleanCustom.endsWith('/api') ? cleanCustom : `${cleanCustom}/api`;
+        return resolved;
+      }
     }
   }
 
@@ -17,8 +23,8 @@ export const getApiBase = (): string => {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     const cleanUrl = envUrl.trim().replace(/\/+$/, '');
     // In production web browser, guard against accidentally bundled localhost
-    if (!isTauri() && import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
-      console.warn('[CAFEFLOW] Web production detected localhost in VITE_API_URL; fallback to live backend');
+    if (!isTauri() && import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1') || cleanUrl === '/api')) {
+      console.warn('[CAFEFLOW API] Web production detected localhost/relative in VITE_API_URL; fallback to live Render backend');
       return 'https://cafeflow-s5j3.onrender.com/api';
     }
     return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
@@ -64,6 +70,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ? `${base.replace(/\/api$/, '')}${cleanEndpoint}`
     : `${base}${cleanEndpoint}`;
 
+  const method = options.method || 'GET';
+  console.log(`[CAFEFLOW API] -> ${method} ${url}`);
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -71,9 +80,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     });
 
     const data = await response.json().catch(() => null);
+    console.log(`[CAFEFLOW API] <- ${response.status} ${response.statusText} (${url})`);
 
     if (!response.ok) {
-      const errorMessage = data?.message || `Request failed with status ${response.status}`;
+      const errorMessage = data?.message || data?.error || `HTTP ${response.status}: ${response.statusText || 'Request failed'}`;
+      console.warn(`[CAFEFLOW API Error] ${method} ${url} returned ${response.status}:`, errorMessage);
       throw new ApiError(errorMessage, response.status, data);
     }
 
@@ -81,7 +92,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   } catch (error: any) {
     if (error instanceof ApiError) throw error;
     
-    // User-friendly network failure message (no raw stack traces)
+    console.error(`[CAFEFLOW Network/CORS Error] Failed request ${method} ${url}:`, error?.message || error);
+    
+    // User-friendly network failure message with target server diagnostic
     if (
       error.name === 'TypeError' ||
       error.message?.includes('fetch') ||
@@ -90,10 +103,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       error.message?.includes('network') ||
       error.message?.includes('Load failed')
     ) {
-      throw new ApiError('Unable to connect to CAFELOW server. Please check your internet connection.', 0);
+      throw new ApiError(`Unable to connect to CAFELOW server at ${url}. Please check internet connection or backend availability.`, 0);
     }
     
-    throw new ApiError(error.message || 'Unable to connect to CAFELOW server. Please check your internet connection.', 500);
+    throw new ApiError(error.message || `Unable to connect to CAFELOW server at ${url}.`, 500);
   }
 }
 

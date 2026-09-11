@@ -18,8 +18,8 @@ export const getApiBase = (): string => {
     const cleanUrl = envUrl.trim().replace(/\/+$/, '');
     // In production web browser, guard against accidentally bundled localhost
     if (!isTauri() && import.meta.env.PROD && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
-      console.warn('[CAFEFLOW] Web production detected localhost in VITE_API_URL; fallback to relative /api');
-      return '/api';
+      console.warn('[CAFEFLOW] Web production detected localhost in VITE_API_URL; fallback to live backend');
+      return 'https://cafeflow-s5j3.onrender.com/api';
     }
     return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
   }
@@ -29,14 +29,8 @@ export const getApiBase = (): string => {
     return 'http://localhost:5000/api';
   }
 
-  // 4. Web browser relative fallback (same-origin reverse proxy)
-  if (!isTauri()) {
-    return '/api';
-  }
-
-  // 5. Desktop Tauri production without VITE_API_URL
-  // If no environment variable or override is set, return relative /api
-  return '/api';
+  // 4. Default Production Cloud Backend (Both Web Vercel & Desktop Tauri)
+  return 'https://cafeflow-s5j3.onrender.com/api';
 };
 
 export class ApiError extends Error {

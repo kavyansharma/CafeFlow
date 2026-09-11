@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: cafeflow-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://cafe-flow-eight.vercel.app,tauri://localhost,http://tauri.localhost,https://tauri.localhost

@@ -25,7 +25,9 @@ export const RegisterCafe: React.FC = () => {
   // Form State
   const [cafeName, setCafeName] = useState('');
   const [tagline, setTagline] = useState('Artisanal Brews & Fresh Bakes');
-  const [concept, setConcept] = useState<'roastery' | 'bakery' | 'bistro' | 'tea'>('roastery');
+  const [concept, setConcept] = useState<
+    'restaurant' | 'qsr' | 'cloud_kitchen' | 'roastery' | 'bakery' | 'bistro' | 'tea'
+  >('restaurant');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('Bengaluru');
@@ -41,6 +43,53 @@ export const RegisterCafe: React.FC = () => {
 
   const { registerCafe } = useAuth();
   const navigate = useNavigate();
+
+  const CONCEPTS = [
+    {
+      id: 'restaurant' as const,
+      title: 'Full-Service Restaurant',
+      desc: 'Starters, main courses, curries, breads, rice, desserts, and beverages.',
+      badgeText: 'We will auto-populate 5 starter restaurant items with COGS recipe calculations.',
+    },
+    {
+      id: 'qsr' as const,
+      title: 'Quick-Service Restaurant',
+      desc: 'Fast meals, burgers, wraps, fries, combos, and takeaway.',
+      badgeText: 'We will auto-populate 5 starter QSR items with COGS recipe calculations.',
+    },
+    {
+      id: 'cloud_kitchen' as const,
+      title: 'Cloud Kitchen',
+      desc: 'Delivery-focused meals, combos, packaging, and online orders.',
+      badgeText: 'We will auto-populate 5 starter cloud kitchen items with COGS recipe calculations.',
+    },
+    {
+      id: 'roastery' as const,
+      title: 'Specialty Coffee & Roastery',
+      desc: 'Espresso, pour overs, cold brews, and artisan coffee beans.',
+      badgeText: 'We will auto-populate 5 starter coffee items with COGS recipe calculations.',
+    },
+    {
+      id: 'bakery' as const,
+      title: 'Bakery & Viennoiserie',
+      desc: 'Croissants, sourdough breads, cheesecakes, and pastries.',
+      badgeText: 'We will auto-populate 5 starter bakery items with COGS recipe calculations.',
+    },
+    {
+      id: 'bistro' as const,
+      title: 'Cafe & All-Day Bistro',
+      desc: 'Paninis, pasta bowls, salads, shakes, and gourmet bites.',
+      badgeText: 'We will auto-populate 5 starter bistro items with COGS recipe calculations.',
+    },
+    {
+      id: 'tea' as const,
+      title: 'Chai & Tea Lounge',
+      desc: 'Specialty masala chais, green teas, and finger snacks.',
+      badgeText: 'We will auto-populate 5 starter tea lounge items with COGS recipe calculations.',
+    },
+  ];
+
+  const selectedConceptInfo = CONCEPTS.find(c => c.id === concept) || CONCEPTS[0];
 
   const handleCafeNameChange = (val: string) => {
     setCafeName(val);
@@ -295,40 +344,19 @@ export const RegisterCafe: React.FC = () => {
               <div className="border-b border-slate-800 pb-3">
                 <h2 className="text-base font-bold text-white flex items-center gap-2">
                   <Utensils className="w-5 h-5 text-amber-500" />
-                  <span>Cafe Concept & Starter Menu</span>
+                  <span>Business Type & Starter Menu</span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Select your concept to automatically generate starter categories, recipes, and raw materials.
+                  We'll create a starter menu and inventory based on your business type. You can edit everything before going live.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  {
-                    id: 'roastery',
-                    title: 'Specialty Coffee & Roastery',
-                    desc: 'Espresso, pour overs, cold brews, and artisan coffee beans.',
-                  },
-                  {
-                    id: 'bakery',
-                    title: 'Bakery & Viennoiserie',
-                    desc: 'Croissants, sourdough breads, cheesecakes, and pastries.',
-                  },
-                  {
-                    id: 'bistro',
-                    title: 'Cafe & All-Day Bistro',
-                    desc: 'Paninis, pasta bowls, salads, shakes, and gourmet bites.',
-                  },
-                  {
-                    id: 'tea',
-                    title: 'Chai & Tea Lounge',
-                    desc: 'Specialty masala chais, green teas, and finger snacks.',
-                  },
-                ].map(c => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar">
+                {CONCEPTS.map(c => (
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setConcept(c.id as any)}
+                    onClick={() => setConcept(c.id)}
                     className={clsx(
                       'p-4 rounded-2xl border text-left transition-all relative',
                       concept === c.id
@@ -347,7 +375,7 @@ export const RegisterCafe: React.FC = () => {
 
               <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl flex items-center gap-2 text-xs text-amber-400 font-medium">
                 <Sparkles className="w-4 h-4 shrink-0" />
-                <span>We will auto-populate 5 starter menu items with COGS recipe calculations.</span>
+                <span>{selectedConceptInfo.badgeText}</span>
               </div>
             </div>
           )}

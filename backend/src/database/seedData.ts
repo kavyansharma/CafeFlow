@@ -22,6 +22,7 @@ export interface Cafe {
   max_discount_percent: number;
   enable_ai_insights: boolean;
   status: 'ACTIVE' | 'SUSPENDED' | 'ONBOARDING';
+  business_type?: string;
   created_at: string;
   updated_at: string;
 }

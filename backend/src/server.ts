@@ -98,15 +98,30 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start listening
+import { DatabaseMigrator } from './database/migrator';
+
+// Start listening and run migrations
 if (config.nodeEnv !== 'test') {
-  app.listen(config.port, () => {
-    console.log(`=========================================`);
-    console.log(`☕ CAFEFLOW Backend running on port ${config.port}`);
-    console.log(`🚀 API Base URL: http://localhost:${config.port}/api`);
-    console.log(`✨ Environment: ${config.nodeEnv}`);
-    console.log(`=========================================`);
-  });
+  DatabaseMigrator.runMigrations()
+    .then(({ applied, skipped }) => {
+      if (applied.length > 0) {
+        console.log(`[DB] Applied ${applied.length} pending migration(s): ${applied.join(', ')}`);
+      } else {
+        console.log(`[DB] Database schema is up to date (${skipped.length} migration(s) active).`);
+      }
+    })
+    .catch((err) => {
+      console.error('[DB] Database migration error on startup:', err);
+    })
+    .finally(() => {
+      app.listen(config.port, () => {
+        console.log(`=========================================`);
+        console.log(`☕ CAFEFLOW Backend running on port ${config.port}`);
+        console.log(`🚀 API Base URL: http://localhost:${config.port}/api`);
+        console.log(`✨ Environment: ${config.nodeEnv}`);
+        console.log(`=========================================`);
+      });
+    });
 }
 
 export default app;

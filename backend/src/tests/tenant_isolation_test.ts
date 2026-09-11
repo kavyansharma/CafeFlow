@@ -363,39 +363,150 @@ async function runTests() {
     assert(beanAudit.every((a: any) => a.cafe_id === 'cafe-bean-002'), 'Bean Theory audit trail belongs exclusively to Bean Theory');
 
     // ----------------------------------------------------
-    // SUITE 8: CAFE SELF-REGISTRATION FLOW
+    // SUITE 8: CAFE & RESTAURANT SELF-REGISTRATION FLOW
     // ----------------------------------------------------
-    console.log('\n8. [REGISTRATION] Testing New Cafe Self-Registration Flow...');
+    console.log('\n8. [REGISTRATION & CONCEPTS] Testing Multi-Concept Registration & Starter Data...');
 
-    const newCafeRes = (await (
+    // 8.1 Full-Service Restaurant Registration
+    const restaurantRes = (await (
       await fetch(`${API_BASE}/auth/register-cafe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cafe_name: 'Moonlight Artisan Roastery',
-          owner_name: 'Diana Prince',
-          email: `diana_${Date.now()}@moonlight.demo`,
+          cafe_name: 'Royal Haveli Fine Dine',
+          owner_name: 'Vikramaditya Singhania',
+          email: `vikram_${Date.now()}@haveli.demo`,
           password: 'password123',
-          phone: '+91 91234 56789',
-          address: '74 MG Road, Indiranagar, Bengaluru',
-          gstin: '29ABCDE1234F1Z5',
-          currency: '₹',
-          invoice_prefix: 'ML-2026-',
-          business_type: 'Cafe & Bakery',
-          seating_capacity: 40,
+          phone: '+91 98765 11223',
+          address: '45 Heritage Boulevard, Jaipur',
+          business_type: 'restaurant',
+          invoice_prefix: 'RH-2026-',
         }),
       })
     ).json()) as any;
 
-    assert(newCafeRes.success && newCafeRes.cafe?.name === 'Moonlight Artisan Roastery', 'New cafe registered successfully');
-    assert(newCafeRes.token, 'Registration issued a JWT token for the new owner');
+    assert(restaurantRes.success && restaurantRes.cafe?.name === 'Royal Haveli Fine Dine', 'Full-Service Restaurant registered successfully');
+    assert(restaurantRes.cafe?.business_type === 'restaurant', 'Stored business_type is restaurant');
 
-    const newCafeHeaders = {
+    const restHeaders = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${newCafeRes.token}`,
+      Authorization: `Bearer ${restaurantRes.token}`,
     };
-    const newCafeProducts = ((await (await fetch(`${API_BASE}/products`, { headers: newCafeHeaders })).json()) as any).data;
-    assert(newCafeProducts.length > 0 && newCafeProducts.every((p: any) => p.cafe_id === newCafeRes.cafe.id), 'New cafe auto-populated with starter menu and zero leakage');
+
+    const restCats = ((await (await fetch(`${API_BASE}/categories`, { headers: restHeaders })).json()) as any).data;
+    const catNames = restCats.map((c: any) => c.name);
+    assert(catNames.includes('Starters') && catNames.includes('Main Course') && catNames.includes('Indian Breads') && catNames.includes('Rice & Biryani') && catNames.includes('Dal & Curries') && catNames.includes('Tandoor') && catNames.includes('Chinese') && catNames.includes('Desserts') && catNames.includes('Beverages'), 'Restaurant seeded with all 9 required categories');
+
+    const restProds = ((await (await fetch(`${API_BASE}/products`, { headers: restHeaders })).json()) as any).data;
+    const prodNames = restProds.map((p: any) => p.name);
+    assert(prodNames.includes('Paneer Tikka') && prodNames.includes('Veg Dum Biryani') && prodNames.includes('Butter Naan') && prodNames.includes('Dal Tadka') && prodNames.includes('Paneer Butter Masala') && prodNames.includes('Chicken Dum Biryani') && prodNames.includes('Tandoori Chicken (Half)') && prodNames.includes('Gulab Jamun (2 pcs)') && prodNames.includes('Royal Sweet Lassi'), 'Restaurant seeded with authentic starter menu items');
+
+    const restInv = ((await (await fetch(`${API_BASE}/inventory`, { headers: restHeaders })).json()) as any).data;
+    const invNames = restInv.map((i: any) => i.name);
+    assert(invNames.some((n: string) => n.includes('Paneer')) && invNames.some((n: string) => n.includes('Basmati')) && invNames.some((n: string) => n.includes('Chicken')) && invNames.some((n: string) => n.includes('Ghee')), 'Restaurant seeded with matching raw materials/inventory');
+
+    const restRecipes = ((await (await fetch(`${API_BASE}/recipes`, { headers: restHeaders })).json()) as any).data;
+    assert(restRecipes.length > 0 && restRecipes.every((r: any) => r.calculated_cogs > 0 && r.items.length > 0), 'Restaurant starter items have calculated COGS recipes');
+
+    // 8.2 Verify Starter Menu Items Can Be Edited / Deleted / Added by Owner
+    const targetProd = restProds[0];
+    const updateProdRes = await fetch(`${API_BASE}/products/${targetProd.id}`, {
+      method: 'PUT',
+      headers: restHeaders,
+      body: JSON.stringify({
+        selling_price: 310,
+        description: 'Updated gourmet paneer tikka description',
+      }),
+    });
+    const updatedProd = (await updateProdRes.json()) as any;
+    assert(updateProdRes.status === 200 && updatedProd.data?.selling_price === 310, 'Owner can edit starter product price and details');
+
+    // 8.3 Quick-Service Restaurant (QSR) Registration
+    const qsrRes = (await (
+      await fetch(`${API_BASE}/auth/register-cafe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cafe_name: 'Turbo Burger QSR',
+          owner_name: 'Samir Khan',
+          email: `samir_${Date.now()}@turboburger.demo`,
+          password: 'password123',
+          phone: '+91 98765 44332',
+          business_type: 'qsr',
+        }),
+      })
+    ).json()) as any;
+
+    const qsrHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${qsrRes.token}` };
+    const qsrCats = ((await (await fetch(`${API_BASE}/categories`, { headers: qsrHeaders })).json()) as any).data;
+    const qsrProds = ((await (await fetch(`${API_BASE}/products`, { headers: qsrHeaders })).json()) as any).data;
+    assert(qsrCats.some((c: any) => c.name === 'Burgers') && qsrCats.some((c: any) => c.name === 'Combos'), 'QSR seeded with Burgers and Combos categories');
+    assert(qsrProds.some((p: any) => p.name.includes('Burger')) && qsrProds.some((p: any) => p.name.includes('Wrap')), 'QSR seeded with burger and wrap starter items');
+
+    // 8.4 Cloud Kitchen Registration
+    const ckRes = (await (
+      await fetch(`${API_BASE}/auth/register-cafe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cafe_name: 'BoxMeal Cloud Kitchen',
+          owner_name: 'Ritu Sen',
+          email: `ritu_${Date.now()}@boxmeal.demo`,
+          password: 'password123',
+          phone: '+91 98765 99887',
+          business_type: 'cloud_kitchen',
+        }),
+      })
+    ).json()) as any;
+
+    const ckHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${ckRes.token}` };
+    const ckCats = ((await (await fetch(`${API_BASE}/categories`, { headers: ckHeaders })).json()) as any).data;
+    const ckProds = ((await (await fetch(`${API_BASE}/products`, { headers: ckHeaders })).json()) as any).data;
+    assert(ckCats.some((c: any) => c.name === 'Packaging') && ckCats.some((c: any) => c.name === 'Combos'), 'Cloud Kitchen seeded with Packaging and Combos');
+    assert(ckProds.some((p: any) => p.name.includes('Thali') || p.name.includes('Box')), 'Cloud Kitchen seeded with thali & meal box items');
+
+    // 8.5 Strict Tenant Isolation Check across new concepts
+    assert(restProds.every((p: any) => p.cafe_id === restaurantRes.cafe.id), 'Restaurant products isolated strictly to restaurant tenant');
+    assert(qsrProds.every((p: any) => p.cafe_id === qsrRes.cafe.id), 'QSR products isolated strictly to QSR tenant');
+    assert(ckProds.every((p: any) => p.cafe_id === ckRes.cafe.id), 'Cloud kitchen products isolated strictly to cloud kitchen tenant');
+
+    // ----------------------------------------------------
+    // SUITE 9: DATABASE MIGRATOR & BACKWARD COMPATIBILITY
+    // ----------------------------------------------------
+    console.log('\n9. [MIGRATOR] Testing Automated Migration Runner & Idempotency...');
+    const { DatabaseMigrator } = await import('../database/migrator');
+
+    // 9.1 Execute migration runner
+    const migrationRun1 = await DatabaseMigrator.runMigrations();
+    assert(
+      migrationRun1.applied.includes('001_add_business_type_to_cafes.sql') ||
+        migrationRun1.skipped.includes('001_add_business_type_to_cafes.sql'),
+      'DatabaseMigrator successfully processed 001_add_business_type_to_cafes.sql'
+    );
+
+    // 9.2 Execute migration runner second time to prove idempotency
+    const migrationRun2 = await DatabaseMigrator.runMigrations();
+    assert(
+      migrationRun2.skipped.includes('001_add_business_type_to_cafes.sql'),
+      'DatabaseMigrator is idempotent: subsequent runs safely skip already applied migrations'
+    );
+
+    // 9.3 Verify demo cafes (Sunrise Cafe and Bean Theory) remain completely operational
+    const reSunriseRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@sunrise.demo', password: 'demo123' }),
+    });
+    const reSunrise = (await reSunriseRes.json()) as any;
+    assert(reSunriseRes.status === 200 && reSunrise.cafe?.id === 'cafe-sunrise-001', 'Sunrise Demo Cafe continues working normally with zero disruption');
+
+    const reBeanRes = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@bean.demo', password: 'demo123' }),
+    });
+    const reBean = (await reBeanRes.json()) as any;
+    assert(reBeanRes.status === 200 && reBean.cafe?.id === 'cafe-bean-002', 'Bean Theory Demo Cafe continues working normally with zero disruption');
 
     // ----------------------------------------------------
     // SUMMARY

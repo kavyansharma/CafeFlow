@@ -25,9 +25,13 @@ CREATE TABLE IF NOT EXISTS cafes (
     max_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 30.00,
     enable_ai_insights BOOLEAN NOT NULL DEFAULT TRUE,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 'ACTIVE', 'SUSPENDED', 'ONBOARDING'
+    business_type VARCHAR(50) NOT NULL DEFAULT 'restaurant', -- 'restaurant', 'qsr', 'cloud_kitchen', 'roastery', 'bakery', 'bistro', 'tea'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Idempotent Migration: Add business_type column if table already exists in production
+ALTER TABLE cafes ADD COLUMN IF NOT EXISTS business_type VARCHAR(50) DEFAULT 'restaurant';
 
 -- 2. ROLES & USERS (TENANT-SCOPED)
 CREATE TYPE user_role AS ENUM ('OWNER', 'MANAGER', 'CASHIER');

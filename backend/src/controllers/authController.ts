@@ -6,9 +6,22 @@ import { db } from '../database/db';
 import { config } from '../config';
 import { AuthRequest } from '../middleware/auth';
 import { Cafe, User, hashPassword } from '../database/seedData';
+import { generateStarterDataForTenant, normalizeBusinessType } from '../database/starterTemplates';
 
 export const registerCafe = (req: Request, res: Response) => {
-  const { cafe_name, owner_name, email, phone, password, address, gstin } = req.body;
+  const {
+    cafe_name,
+    owner_name,
+    email,
+    phone,
+    password,
+    address,
+    gstin,
+    currency,
+    invoice_prefix,
+    business_type,
+    default_gst_rate,
+  } = req.body;
 
   if (!cafe_name || !owner_name || !email || !password) {
     return res.status(400).json({
@@ -37,6 +50,7 @@ export const registerCafe = (req: Request, res: Response) => {
 
   const cafeId = `cafe-${uuidv4().substring(0, 8)}`;
   const now = new Date().toISOString();
+  const normalizedConcept = normalizeBusinessType(business_type);
 
   // 1. Create Cafe Tenant Record
   const newCafe: Cafe = {
@@ -48,15 +62,16 @@ export const registerCafe = (req: Request, res: Response) => {
     phone: phone || '',
     email,
     gstin: gstin || '',
-    currency: '₹',
+    currency: currency || '₹',
     timezone: 'Asia/Kolkata',
-    invoice_prefix: `${cafe_name.substring(0, 2).toUpperCase()}-2026-`,
-    default_gst_rate: 5,
+    invoice_prefix: invoice_prefix || `${cafe_name.substring(0, 2).toUpperCase()}-2026-`,
+    default_gst_rate: default_gst_rate !== undefined ? Number(default_gst_rate) : 5,
     loyalty_spend_per_point: 100,
     loyalty_point_value: 1.0,
     max_discount_percent: 30,
     enable_ai_insights: true,
     status: 'ACTIVE',
+    business_type: normalizedConcept,
     created_at: now,
     updated_at: now,
   };
@@ -78,61 +93,19 @@ export const registerCafe = (req: Request, res: Response) => {
 
   db.users.push(ownerUser);
 
-  // 3. Create Default Categories for new cafe
-  const defaultCategories = [
-    { id: `cat-${uuidv4().substring(0, 6)}`, cafe_id: cafeId, name: 'Coffee', slug: 'coffee', description: 'Espresso & Brews', icon: 'Coffee', sort_order: 1, is_active: true },
-    { id: `cat-${uuidv4().substring(0, 6)}`, cafe_id: cafeId, name: 'Tea', slug: 'tea', description: 'Artisan Teas & Chais', icon: 'CupSoda', sort_order: 2, is_active: true },
-    { id: `cat-${uuidv4().substring(0, 6)}`, cafe_id: cafeId, name: 'Beverages', slug: 'beverages', description: 'Coolers & Shakes', icon: 'GlassWater', sort_order: 3, is_active: true },
-    { id: `cat-${uuidv4().substring(0, 6)}`, cafe_id: cafeId, name: 'Food & Snacks', slug: 'food-snacks', description: 'Sandwiches & Snacks', icon: 'Sandwich', sort_order: 4, is_active: true },
-    { id: `cat-${uuidv4().substring(0, 6)}`, cafe_id: cafeId, name: 'Desserts', slug: 'desserts', description: 'Cakes & Pastries', icon: 'Cake', sort_order: 5, is_active: true },
-  ];
-  db.categories.push(...defaultCategories);
+  // 3. Generate and Seed Tailored Starter Data (Categories, Inventory, Products, Recipes)
+  // Ensure no duplicates if called again
+  const existingCats = db.categories.filter(c => c.cafe_id === cafeId);
+  if (existingCats.length === 0) {
+    const starterData = generateStarterDataForTenant(cafeId, newCafe.slug, business_type);
+    db.categories.push(...starterData.categories);
+    db.inventory.push(...starterData.inventory);
+    db.products.push(...starterData.products);
+    db.recipes.push(...starterData.recipes);
+  }
 
-  // 4. Create Initial Starter Products
-  const starterProducts = [
-    {
-      id: `prod-${uuidv4().substring(0, 8)}`,
-      cafe_id: cafeId,
-      category_id: defaultCategories[0].id,
-      name: 'House Blend Cappuccino',
-      sku: `${newCafe.slug.substring(0, 3).toUpperCase()}-CAP-01`,
-      description: 'Velvety espresso with textured micro-foam',
-      selling_price: 160,
-      cost_price: 32,
-      gst_rate: 5,
-      image_url: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=500&auto=format&fit=crop&q=80',
-      is_available: true,
-      track_stock: true,
-      stock_quantity: 100,
-      min_stock_level: 15,
-      has_recipe: false,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: `prod-${uuidv4().substring(0, 8)}`,
-      cafe_id: cafeId,
-      category_id: defaultCategories[3].id,
-      name: 'Grilled Cheese Panini',
-      sku: `${newCafe.slug.substring(0, 3).toUpperCase()}-PAN-02`,
-      description: 'Artisanal grilled sandwich with melted cheddar',
-      selling_price: 200,
-      cost_price: 45,
-      gst_rate: 5,
-      image_url: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80',
-      is_available: true,
-      track_stock: true,
-      stock_quantity: 50,
-      min_stock_level: 10,
-      has_recipe: false,
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-  db.products.push(...starterProducts);
-
-  db.logAudit(cafeId, ownerUser.name, 'OWNER', 'Cafe Registered', `New cafe "${newCafe.name}" registered and onboarded.`);
-  db.addNotification(cafeId, 'SYSTEM', 'Welcome to CAFEFLOW', `Welcome to CAFEFLOW! Your cafe "${newCafe.name}" is ready for billing.`, 'SUCCESS', '/dashboard');
+  db.logAudit(cafeId, ownerUser.name, 'OWNER', 'Cafe Registered', `New cafe "${newCafe.name}" (${normalizedConcept}) registered and onboarded.`);
+  db.addNotification(cafeId, 'SYSTEM', 'Welcome to CAFEFLOW', `Welcome to CAFEFLOW! Your starter menu & inventory for "${newCafe.name}" are ready. You can edit all items before going live.`, 'SUCCESS', '/dashboard');
 
   // Sign JWT with cafe_id
   const token = jwt.sign(

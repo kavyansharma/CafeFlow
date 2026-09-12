@@ -6,7 +6,7 @@ import apiRoutes from './routes/api';
 const app = express();
 
 // Allowed CORS origins
-const defaultAllowedOrigins = [
+export const defaultAllowedOrigins = [
   'https://cafe-flow-eight.vercel.app',
   'http://tauri.localhost',
   'https://tauri.localhost',
@@ -20,19 +20,37 @@ const envOrigins = config.corsOrigin
   ? config.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
 
-const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
+export const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
+
+// CAFELOW Vercel preview deployment origin regex pattern
+// Conceptually matches: https://cafe-flow-<deployment-id>.vercel.app
+export const CAFEFLOW_VERCEL_PREVIEW_REGEX = /^https:\/\/cafe-flow-[a-z0-9-]+\.vercel\.app$/i;
+
+/**
+ * Validates whether an incoming origin is authorized for CORS access.
+ */
+export const isOriginAllowed = (origin?: string): boolean => {
+  // Allow requests with no origin (e.g. mobile apps, curl, automated test suites)
+  if (!origin) return true;
+
+  // Exact match from allowed list or wildcard
+  if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+    return true;
+  }
+
+  // CAFELOW Vercel preview deployment match (https://cafe-flow-<deployment-id>.vercel.app)
+  if (CAFEFLOW_VERCEL_PREVIEW_REGEX.test(origin)) {
+    return true;
+  }
+
+  return false;
+};
 
 // Middleware
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, automated test suites)
-      if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.includes(origin) ||
-        allowedOrigins.includes('*') ||
-        config.nodeEnv === 'development'
-      ) {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`CORS policy does not allow access from origin: ${origin}`), false);
@@ -40,6 +58,7 @@ app.use(
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+    optionsSuccessStatus: 204,
   })
 );
 

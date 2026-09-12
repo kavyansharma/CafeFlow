@@ -1,7 +1,8 @@
+process.env.NODE_ENV = 'test';
 import http from 'http';
-import app from '../server';
 
 async function runTests() {
+  const { default: app } = await import('../server');
   console.log('================================================================');
   console.log('☕ CAFEFLOW PRODUCTION READINESS & MULTI-TENANT SECURITY SUITE');
   console.log('================================================================\n');
